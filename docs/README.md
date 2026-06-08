@@ -1,19 +1,18 @@
 # Compiling QMHub's Documentation
 
-The docs for this project are built with [Sphinx](http://www.sphinx-doc.org/en/master/).
-To compile the docs, first ensure that Sphinx and the ReadTheDocs theme are installed.
-
+The docs for this project are built with [Sphinx](https://www.sphinx-doc.org/).
+Install the documentation dependencies from the repository root:
 
 ```bash
-conda install sphinx sphinx_rtd_theme 
+python -m pip install -r docs/requirements.txt
 ```
 
+Then build the static HTML pages from the `docs` directory:
 
-Once installed, you can use the `Makefile` in this directory to compile static HTML pages by
 ```bash
+cd docs
 make html
 ```
 
-The compiled docs will be in the `_build` directory and can be viewed by opening `index.html` (which may itself 
-be inside a directory called `html/` depending on what version of Sphinx is installed).
-
+The generated HTML output is written to `docs/_build/html/`. Open
+`docs/_build/html/index.html` in a browser to view the local documentation.
