@@ -1,12 +1,27 @@
-import types
-
 import numpy as np
-from numpy.lib.user_array import container
+from numpy.lib.mixins import NDArrayOperatorsMixin
 
 from .dobject import DependObject, cache_update, invalidate_cache
 
 
-class DependArray(DependObject, container):
+def _unwrap_array(value):
+    if isinstance(value, DependArray):
+        value.update_cache()
+        return value.array
+    return value
+
+
+def _wrap_array_result(cls, result):
+    if isinstance(result, tuple):
+        return tuple(_wrap_array_result(cls, item) for item in result)
+    if isinstance(result, np.ndarray) and result.shape != ():
+        return cls(result)
+    return result
+
+
+class DependArray(DependObject, NDArrayOperatorsMixin):
+
+    __array_priority__ = 1000
 
     def __init__(self, data=None, **kwargs):
         if data is not None:
@@ -49,6 +64,77 @@ class DependArray(DependObject, container):
     def __reversed__(self):
         return reversed(self.array)
 
+    def __array__(self, dtype=None, copy=None):
+        self.update_cache()
+        if copy is None:
+            return np.asarray(self.array, dtype=dtype)
+        return np.array(self.array, dtype=dtype, copy=copy)
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        outputs = kwargs.get("out", ())
+        if outputs is None:
+            outputs = ()
+        elif not isinstance(outputs, tuple):
+            outputs = (outputs,)
+
+        output_arrays = []
+        for output in outputs:
+            if isinstance(output, DependArray):
+                if output._func is not None:
+                    raise NameError(f"Cannot set the value of <{output._name}> directly")
+                output_arrays.append(output.array)
+            else:
+                output_arrays.append(output)
+
+        if output_arrays:
+            kwargs["out"] = tuple(output_arrays)
+
+        if method == "at" and inputs and isinstance(inputs[0], DependArray):
+            if inputs[0]._func is not None:
+                raise NameError(f"Cannot set the value of <{inputs[0]._name}> directly")
+            result = getattr(ufunc, method)(*[_unwrap_array(value) for value in inputs], **kwargs)
+            invalidate_cache(inputs[0])
+            return result
+
+        result = getattr(ufunc, method)(*[_unwrap_array(value) for value in inputs], **kwargs)
+
+        if outputs:
+            result_items = result if isinstance(result, tuple) else (result,)
+            returned = []
+
+            for output in outputs:
+                if isinstance(output, DependArray):
+                    invalidate_cache(output)
+            for output, item in zip(outputs, result_items):
+                if isinstance(output, DependArray):
+                    returned.append(output)
+                elif output is None:
+                    returned.append(_wrap_array_result(self.__class__, item))
+                else:
+                    returned.append(item)
+
+            if len(returned) == 1:
+                return returned[0]
+            return tuple(returned)
+
+        return _wrap_array_result(self.__class__, result)
+
+    @cache_update
+    def __len__(self):
+        return len(self.array)
+
+    @cache_update
+    def __repr__(self):
+        if self.array.ndim > 0:
+            return self.__class__.__name__ + repr(self.array)[len("array"):]
+        return self.__class__.__name__ + "(" + repr(self.array) + ")"
+
+    def __getattr__(self, attr):
+        if attr == "array":
+            raise AttributeError(attr)
+        self.update_cache()
+        return getattr(self.array, attr)
+
     def update_cache(self):
         if not self._cache_valid:
             if self._func is None:
@@ -59,47 +145,18 @@ class DependArray(DependObject, container):
                 self.array = np.ascontiguousarray(self._func(*self._dependencies, **self._kwargs))
             self._cache_valid = True
 
-    # Wrap methods from parent class
-    for method_name in dir(container):
-        if method_name not in ["_rc", "__array_wrap__", "__setattr__"]:
-            attr = getattr(container, method_name)
-            if isinstance(attr, types.FunctionType):
-                setattr(container, method_name, cache_update(attr))
-
-    # Add some missing methods
-    __truediv__ = cache_update(container.__div__)
-
-    __rtruediv__ = cache_update(container.__rdiv__)
-
-    __itruediv__ = cache_update(container.__idiv__)
+    @cache_update
+    def copy(self):
+        return _wrap_array_result(self.__class__, self.array.copy())
 
     @cache_update
-    def __floordiv__(self, other):
-        return self._rc(np.floor_divide(self.array, np.asarray(other)))
-
-    @cache_update
-    def __rfloordiv__(self, other):
-        return self._rc(np.floor_divide(np.asarray(other), self.array))
-
-    @cache_update
-    def __ifloordiv__(self, other):
-        np.floor_divide(self.array, other, self.array)
-        return self
-
-    @cache_update
-    def __matmul__(self, other):
-        return self._rc(np.matmul(self.array, other))
-
-    @cache_update
-    def __rmatmul__(self, other):
-        return self._rc(np.matmul(other, self.array))
-
-    @cache_update
-    def __imatmul__(self, other):
-        np.matmul(self.array, other, self.array)
-        return self
+    def astype(self, dtype):
+        return _wrap_array_result(self.__class__, self.array.astype(dtype))
 
     @cache_update
     def tobytes(self, order='C'):
         ""
         return self.array.tobytes(order=order)
+
+    def tostring(self, order='C'):
+        return self.tobytes(order=order)
