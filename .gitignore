@@ -38,9 +38,10 @@ pip-delete-this-directory.txt
 # Unit test / coverage reports
 htmlcov/
 .tox/
+.nox/
 .coverage
 .coverage.*
-.cache
+.cache/
 .pytest_cache
 nosetests.xml
 coverage.xml
@@ -64,6 +65,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+
+# versioningit generated version file
+qmhub/_version.py
 
 # PyBuilder
 target/
@@ -100,6 +104,14 @@ ENV/
 
 # mypy
 .mypy_cache/
+.pytype/
+.ruff_cache/
 
 # vscode
 .vscode/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
