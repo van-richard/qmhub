@@ -102,7 +102,10 @@ class QMBase(object):
 
     def _get_qm_cache(self, *args, output=None):
         self.gen_input()
-        run_cmdline(self.cmdline)
+        returncode = run_cmdline(self.cmdline)
+        if returncode != 0:
+            self._raise_qm_command_error(returncode)
+
         if output is not None:
             output_path = Path(self.cwd).joinpath(output)
             try:
@@ -112,6 +115,13 @@ class QMBase(object):
             else:
                 os.remove(output_path)
         return output or []
+
+    def _raise_qm_command_error(self, returncode):
+        """Raise a command failure with enough context for external QM tools."""
+
+        raise RuntimeError(
+            f"QM command failed with exit code {returncode}: {self.cmdline}"
+        )
 
     def update_options(self, options=None):
         if options is not None:

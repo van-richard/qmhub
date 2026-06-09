@@ -128,13 +128,13 @@ class QChem(QMBase):
             qm_cache.update_cache()
 
         output = output or "save/99.0"
+        output_path = Path(self.cwd).joinpath(output)
 
-        try:
-            energy = np.fromfile(Path(self.cwd).joinpath(output), dtype="f8", count=1, offset=8).item()
-        except:
-            raise
-        else:
-            os.remove(Path(self.cwd).joinpath(output))
+        # Q-Chem writes the scalar energy after an 8-byte record prefix.
+        # Validate before reading so a failed first step reports the real cause.
+        self._require_binary_output(output_path, 16, "Q-Chem energy")
+        energy = np.fromfile(output_path, dtype="f8", count=1, offset=8).item()
+        os.remove(output_path)
 
         return energy
 
@@ -145,13 +145,14 @@ class QChem(QMBase):
             qm_cache.update_cache()
 
         output = output or "save/131.0"
+        output_path = Path(self.cwd).joinpath(output)
+        count = len(self.qm_elements) * 3
 
-        try:
-            gradient = np.fromfile(Path(self.cwd).joinpath(output), dtype="f8", count=(len(self.qm_elements)*3)).reshape(-1, 3).T
-        except:
-            raise
-        else:
-            os.remove(Path(self.cwd).joinpath(output))
+        # The gradient must contain three doubles per QM atom. Checking this
+        # before deletion avoids hiding incomplete Q-Chem scratch output.
+        self._require_binary_output(output_path, count * 8, "Q-Chem energy gradient")
+        gradient = np.fromfile(output_path, dtype="f8", count=count).reshape(-1, 3).T
+        os.remove(output_path)
 
         return gradient
 
@@ -235,6 +236,22 @@ class QChem(QMBase):
 
         return mm_esp
 
+    @staticmethod
+    def _require_binary_output(path, min_size, label):
+        path = Path(path)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{label} binary output was not produced: {path}"
+            )
+
+        size = path.stat().st_size
+        if size < min_size:
+            raise ValueError(
+                f"{label} binary output is incomplete: {path} "
+                f"has {size} bytes, expected at least {min_size} bytes."
+            )
+
     def _format_mm_esp_error(self, tried, n_mm):
         save_path = Path(self.cwd).joinpath("save")
         save_files = []
@@ -254,6 +271,30 @@ class QChem(QMBase):
             message.extend(["Files present in save/:", "  - " + ", ".join(save_files)])
 
         return "\n".join(message)
+
+    def _raise_qm_command_error(self, returncode):
+        message = [
+            f"Q-Chem command failed with exit code {returncode}.",
+            f"Command: {self.cmdline}",
+        ]
+
+        # qchem_run.log captures launch/module/runtime errors, while qchem.out
+        # often contains the chemistry-level failure. Include tails of both.
+        for name in ("qchem_run.log", "qchem.out"):
+            tail = self._read_text_tail(Path(self.cwd).joinpath(name))
+            if tail:
+                message.extend([f"Last lines of {name}:", tail])
+
+        raise RuntimeError("\n".join(message))
+
+    @staticmethod
+    def _read_text_tail(path, n_lines=20):
+        try:
+            lines = Path(path).read_text(errors="replace").splitlines()
+        except OSError:
+            return ""
+
+        return "\n".join(lines[-n_lines:])
 
     def _get_mulliken_charges(self, qm_cache=None, output=None):
         """Get Mulliken charges from output of QM calculation."""

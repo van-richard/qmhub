@@ -60,6 +60,13 @@ def _write_binary_mm_esp(tmp_path, output):
     return potential, field
 
 
+def _write_binary_output(tmp_path, output, values):
+    output_path = tmp_path.joinpath(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.asarray(values, dtype="f8").tofile(output_path)
+    return output_path
+
+
 def _assert_mm_esp(qchem, potential, field, **kwargs):
     mm_esp = qchem._get_mm_esp(**kwargs)
 
@@ -151,6 +158,76 @@ def test_qchem_cmdline_preserves_user_cray_openmp_settings(tmp_path, monkeypatch
     assert "QCTHREADS=4 OMP_NUM_THREADS=4 qchem -nt 4" in qchem.cmdline
     assert "OMP_PLACES=cores" not in qchem.cmdline
     assert "OMP_PROC_BIND=close" not in qchem.cmdline
+
+
+def test_qchem_cache_reports_command_failure_with_logs(tmp_path, monkeypatch):
+    qchem = _make_qchem(tmp_path)
+    tmp_path.joinpath("qchem_run.log").write_text("launcher failed\n")
+    tmp_path.joinpath("qchem.out").write_text("qchem stopped before writing save files\n")
+    monkeypatch.setattr("qmhub.qmtools.qmbase.run_cmdline", lambda cmdline: 7)
+
+    with pytest.raises(RuntimeError) as error:
+        qchem._get_qm_cache()
+
+    message = str(error.value)
+    assert "Q-Chem command failed with exit code 7." in message
+    assert "qchem_run.log" in message
+    assert "launcher failed" in message
+    assert "qchem.out" in message
+    assert "qchem stopped before writing save files" in message
+
+
+def test_qchem_energy_reads_valid_binary_and_removes(tmp_path):
+    qchem = _make_qchem(tmp_path)
+    output_path = _write_binary_output(tmp_path, "save/99.0", [0.0, -12.5])
+
+    assert np.isclose(qchem._get_qm_energy(), -12.5)
+    assert not output_path.exists()
+
+
+def test_qchem_energy_reports_missing_binary(tmp_path):
+    qchem = _make_qchem(tmp_path)
+
+    with pytest.raises(FileNotFoundError) as error:
+        qchem._get_qm_energy()
+
+    message = str(error.value)
+    assert "Q-Chem energy binary output was not produced" in message
+    assert "save/99.0" in message
+
+
+def test_qchem_energy_reports_incomplete_binary_without_removing(tmp_path):
+    qchem = _make_qchem(tmp_path)
+    output_path = _write_binary_output(tmp_path, "save/99.0", [0.0])
+
+    with pytest.raises(ValueError) as error:
+        qchem._get_qm_energy()
+
+    message = str(error.value)
+    assert "Q-Chem energy binary output is incomplete" in message
+    assert "expected at least 16 bytes" in message
+    assert output_path.exists()
+
+
+def test_qchem_gradient_reads_valid_binary_and_removes(tmp_path):
+    qchem = _make_qchem(tmp_path)
+    output_path = _write_binary_output(tmp_path, "save/131.0", [1.0, 2.0, 3.0])
+
+    assert np.allclose(qchem._get_qm_energy_gradient(), [[1.0], [2.0], [3.0]])
+    assert not output_path.exists()
+
+
+def test_qchem_gradient_reports_incomplete_binary_without_removing(tmp_path):
+    qchem = _make_qchem(tmp_path)
+    output_path = _write_binary_output(tmp_path, "save/131.0", [1.0])
+
+    with pytest.raises(ValueError) as error:
+        qchem._get_qm_energy_gradient()
+
+    message = str(error.value)
+    assert "Q-Chem energy gradient binary output is incomplete" in message
+    assert "expected at least 24 bytes" in message
+    assert output_path.exists()
 
 
 def test_qchem_mm_esp_reads_existing_binary_pair(tmp_path):
