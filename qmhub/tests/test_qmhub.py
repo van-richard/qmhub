@@ -3,12 +3,14 @@ Unit and regression test for the qmhub package.
 """
 
 # Import package, test suite, and other packages as needed
+import io
 import os
 import numpy as np
 import qmhub
 import pytest
 import sys
 
+from qmhub.iotools.fifo import read_fifo_scalar
 from qmhub.utils.darray import DependArray
 from qmhub.utils.sys import get_nproc
 from qmhub.qmtools.qchem import QChem
@@ -123,6 +125,15 @@ def test_get_nproc_uses_scheduler_threads_when_openmp_is_empty(monkeypatch):
 
     assert get_nproc() == 8
     assert os.environ["OMP_NUM_THREADS"] == "8"
+
+
+def test_read_fifo_scalar_assigns_to_zero_dimensional_step():
+    fin = io.BytesIO(np.asarray([42], dtype="i4").tobytes())
+    step = np.asarray(0)
+
+    step[()] = read_fifo_scalar(fin, dtype="i4")
+
+    assert step.item() == 42
 
 
 def test_qchem_cmdline_defaults_to_one_thread(tmp_path, monkeypatch):
