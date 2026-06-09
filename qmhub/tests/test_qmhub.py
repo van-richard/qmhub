@@ -4,13 +4,21 @@ Unit and regression test for the qmhub package.
 
 # Import package, test suite, and other packages as needed
 import io
+import importlib
 import os
+from pathlib import Path
+import threading
+import time
+
 import numpy as np
 import qmhub
 import pytest
 import sys
 
+from qmhub.iotools.bin import IOBin
 from qmhub.iotools.fifo import read_fifo_scalar
+from qmhub.iotools.fifo import IOFifo
+from qmhub.iotools.text import IOText
 from qmhub.utils.darray import DependArray
 from qmhub.utils.sys import get_nproc
 from qmhub.qmtools.qchem import QChem
@@ -79,6 +87,41 @@ def _assert_mm_esp(qchem, potential, field, **kwargs):
     assert np.allclose(mm_esp[1:], -field.T)
 
 
+def _write_text_exchange(path):
+    with open(path, "w") as f:
+        f.write("2 2 0 1 5\n")
+        f.write("0.0 0.0 0.0 -0.2 6\n")
+        f.write("0.5 0.0 0.0 0.1 1\n")
+        f.write("1.0 0.0 0.0 0.2\n")
+        f.write("1.5 0.0 0.0 -0.1\n")
+        np.savetxt(f, np.zeros((3, 3)))
+
+
+def _write_bin_exchange(path):
+    with open(path, "wb") as f:
+        np.asarray([2, 2, 0, 1, 5], dtype="i4").tofile(f)
+        np.asarray([
+            (0.0, 0.0, 0.0, -0.2, 6),
+            (0.5, 0.0, 0.0, 0.1, 1),
+        ], dtype=[
+            ("pos_x", "f8"),
+            ("pos_y", "f8"),
+            ("pos_z", "f8"),
+            ("charge", "f8"),
+            ("element", "i4"),
+        ]).tofile(f)
+        np.asarray([
+            (1.0, 0.0, 0.0, 0.2),
+            (1.5, 0.0, 0.0, -0.1),
+        ], dtype=[
+            ("pos_x", "f8"),
+            ("pos_y", "f8"),
+            ("pos_z", "f8"),
+            ("charge", "f8"),
+        ]).tofile(f)
+        np.zeros((3, 3), dtype="f8").tofile(f)
+
+
 def test_qmhub_imported():
     """Sample test, will always pass so long as import statement worked"""
     assert "qmhub" in sys.modules
@@ -110,6 +153,53 @@ def test_depend_array_indexing_and_cache_invalidation():
     assert np.allclose(np.asarray(dependent), [2.0, 6.0, 8.0])
 
 
+def test_depend_array_electrostatic_style_operations():
+    tensor = DependArray([[1.0, 0.2], [0.3, 1.5], [0.7, -0.4]])
+    charges = DependArray([0.5, -0.25])
+    offsets = DependArray([1.0, 2.0, 3.0])
+
+    projected = tensor @ np.linalg.pinv(tensor) @ tensor
+    assert np.allclose(np.asarray(projected), np.asarray(tensor))
+
+    assert np.allclose(np.asarray(tensor @ charges), [0.45, -0.225, 0.45])
+    assert np.allclose(np.asarray(np.sum(tensor, axis=0)), [2.0, 1.3])
+    assert np.allclose(np.asarray(tensor + offsets[:, np.newaxis]), [[2.0, 1.2], [2.3, 3.5], [3.7, 2.6]])
+
+    out = DependArray(np.zeros((3, 2)))
+    np.add(tensor, 1.0, out=out)
+    assert np.allclose(np.asarray(out), np.asarray(tensor) + 1.0)
+
+    out *= 2.0
+    assert np.allclose(np.asarray(out), (np.asarray(tensor) + 1.0) * 2.0)
+
+
+def test_depend_array_derived_matrix_cache_invalidation():
+    source = DependArray([[1.0, 2.0], [3.0, 4.0]])
+    weights = np.array([1.0, -1.0])
+    dependent = DependArray(func=lambda matrix: matrix @ weights, dependencies=[source])
+
+    assert np.allclose(np.asarray(dependent), [-1.0, -1.0])
+
+    source[0, 0] = 5.0
+
+    assert np.allclose(np.asarray(dependent), [3.0, -1.0])
+
+
+def test_source_tree_helpmelib_extension_available_when_requested():
+    if os.environ.get("QMHUB_REQUIRE_SOURCE_HELPME") != "1":
+        pytest.skip("Set QMHUB_REQUIRE_SOURCE_HELPME=1 after building or copying qmhub.helpmelib into the source tree.")
+
+    package_dir = Path(qmhub.__file__).resolve().parent
+    extensions = list(package_dir.glob("helpmelib*.so"))
+
+    assert extensions, f"No helpmelib extension found in source package directory: {package_dir}"
+
+    module = importlib.import_module("qmhub.helpmelib")
+
+    assert Path(module.__file__).resolve().parent == package_dir
+    assert hasattr(module, "MatrixD")
+
+
 def test_get_nproc_sanitizes_empty_openmp_threads(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("OMP_NUM_THREADS", "")
@@ -118,13 +208,23 @@ def test_get_nproc_sanitizes_empty_openmp_threads(monkeypatch):
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
-def test_get_nproc_uses_scheduler_threads_when_openmp_is_empty(monkeypatch):
+def test_get_nproc_uses_qcthreads_when_openmp_is_empty(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("OMP_NUM_THREADS", "")
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setenv("QCTHREADS", "8")
 
     assert get_nproc() == 8
     assert os.environ["OMP_NUM_THREADS"] == "8"
+
+
+def test_get_nproc_ignores_scheduler_task_counts(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setenv("NCPUS", "16")
+    monkeypatch.setenv("PBS_NP", "32")
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+
+    assert get_nproc() == 1
 
 
 def test_read_fifo_scalar_assigns_to_zero_dimensional_step():
@@ -134,6 +234,82 @@ def test_read_fifo_scalar_assigns_to_zero_dimensional_step():
     step[()] = read_fifo_scalar(fin, dtype="i4")
 
     assert step.item() == 42
+
+
+def test_text_and_binary_outputs_match_upstream_layout(tmp_path):
+    energy = np.asarray(3.25)
+    forces = np.array([
+        [1.0, 2.0, 3.0, 4.0],
+        [5.0, 6.0, 7.0, 8.0],
+        [9.0, 10.0, 11.0, 12.0],
+    ])
+
+    text_input = tmp_path.joinpath("exchange_text.txt")
+    bin_input = tmp_path.joinpath("exchange_bin.bin")
+    _write_text_exchange(text_input)
+    _write_bin_exchange(bin_input)
+
+    text_io = IOText()
+    bin_io = IOBin()
+    text_io.load_system(text_input)
+    bin_io.load_system(bin_input)
+    text_io.return_results(energy, forces)
+    bin_io.return_results(energy, forces)
+
+    text_lines = text_input.with_suffix(".out").read_text().splitlines()
+    bin_output = np.fromfile(bin_input.with_suffix(".out"), dtype="f8")
+
+    assert np.isclose(float(text_lines[0]), energy)
+    assert np.allclose(np.loadtxt(text_lines[1:]).T, forces)
+    assert np.isclose(bin_output[0], energy)
+    assert np.allclose(bin_output[1:].reshape(4, 3).T, forces)
+
+
+def test_fifo_round_trip_writes_energy_and_forces(tmp_path):
+    input_fifo = tmp_path.joinpath("exchange.fifo")
+    output_fifo = input_fifo.with_suffix(".out")
+    os.mkfifo(input_fifo)
+
+    energy = np.asarray(3.25)
+    forces = np.array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+        [5.0, 6.0],
+    ])
+    output = {}
+
+    def write_driver_input():
+        with open(input_fifo, "wb") as f:
+            f.write(np.asarray([2, 1, 0, 1, 0], dtype="i4").tobytes())
+            f.write(np.asarray([0.1, -0.2], dtype="f8").tobytes())
+            f.write(np.asarray([6], dtype="i4").tobytes())
+            f.write(np.asarray([7], dtype="i4").tobytes())
+            f.write(np.asarray([[0.0, 1.0], [0.0, 0.0], [0.0, 0.0]], dtype="f8").tobytes())
+
+    def read_driver_output():
+        while not output_fifo.exists():
+            time.sleep(0.01)
+
+        with open(output_fifo, "rb") as f:
+            output["energy"] = np.frombuffer(f.read(8), dtype="f8")[0]
+            output["forces"] = np.frombuffer(f.read(6 * 8), dtype="f8").reshape(3, 2, order="F")
+
+    writer = threading.Thread(target=write_driver_input)
+    reader = threading.Thread(target=read_driver_output)
+    writer.start()
+
+    fifo_io = IOFifo()
+    fifo_io.load_system(input_fifo)
+
+    reader.start()
+    fifo_io.return_results(energy, forces)
+    writer.join(timeout=5)
+    reader.join(timeout=5)
+
+    assert not writer.is_alive()
+    assert not reader.is_alive()
+    assert np.isclose(output["energy"], energy)
+    assert np.allclose(output["forces"], forces)
 
 
 def test_qchem_cmdline_defaults_to_one_thread(tmp_path, monkeypatch):
@@ -154,19 +330,41 @@ def test_qchem_cmdline_uses_openmp_thread_count(tmp_path, monkeypatch):
     assert "QCTHREADS=4 OMP_NUM_THREADS=4 qchem -nt 4" in qchem.cmdline
 
 
-def test_qchem_cmdline_uses_slurm_cpu_count(tmp_path, monkeypatch):
+def test_qchem_cmdline_uses_qcthreads(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setenv("QCTHREADS", "8")
 
     qchem = _make_qchem(tmp_path)
 
     assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
 
 
+def test_qchem_cmdline_prefers_openmp_over_qcthreads(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("OMP_NUM_THREADS", "2")
+    monkeypatch.setenv("QCTHREADS", "8")
+
+    qchem = _make_qchem(tmp_path)
+
+    assert "QCTHREADS=2 OMP_NUM_THREADS=2 qchem -nt 2" in qchem.cmdline
+
+
+def test_qchem_cmdline_ignores_scheduler_task_counts(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setenv("NCPUS", "16")
+    monkeypatch.setenv("PBS_NP", "32")
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+
+    qchem = _make_qchem(tmp_path)
+
+    assert "QCTHREADS=1 OMP_NUM_THREADS=1 qchem -nt 1" in qchem.cmdline
+
+
 def test_qchem_cmdline_adds_cray_openmp_defaults(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("PE_ENV", "CRAY")
-    monkeypatch.setenv("NCPUS", "16")
+    monkeypatch.setenv("OMP_NUM_THREADS", "16")
 
     qchem = _make_qchem(tmp_path)
 
@@ -179,7 +377,7 @@ def test_qchem_cmdline_adds_cray_openmp_defaults(tmp_path, monkeypatch):
 def test_qchem_cmdline_preserves_user_cray_openmp_settings(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("CRAYPE_VERSION", "1")
-    monkeypatch.setenv("NCPUS", "4")
+    monkeypatch.setenv("QCTHREADS", "4")
     monkeypatch.setenv("OMP_PLACES", "threads")
     monkeypatch.setenv("OMP_PROC_BIND", "spread")
 

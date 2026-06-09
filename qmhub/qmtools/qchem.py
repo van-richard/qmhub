@@ -17,13 +17,11 @@ class QChem(QMBase):
         ("save/1521.0", "save/329.0"),
         ("save/5001.0", "save/5002.0"),
     )
+    # Only explicit thread environment variables control Q-Chem threads.
+    # Scheduler task counts describe MPI layout and are intentionally ignored.
     _THREAD_ENV_VARS = (
-        "QCTHREADS",
         "OMP_NUM_THREADS",
-        "SLURM_CPUS_PER_TASK",
-        "NCPUS",
-        "PBS_NP",
-        "SLURM_NTASKS",
+        "QCTHREADS",
     )
     _CRAY_ENV_VARS = (
         "CRAYPE_VERSION",

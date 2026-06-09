@@ -1,14 +1,11 @@
 import os
 import subprocess as sp
 
-# Prefer per-process thread counts before MPI task counts. In Slurm,
-# SLURM_CPUS_PER_TASK maps more directly to OpenMP/Q-Chem threads.
+# Threaded QM backends should use explicit thread variables only. Scheduler
+# task-count variables describe MPI layout and can oversubscribe OpenMP codes.
 _THREAD_ENV_VARS = (
     "OMP_NUM_THREADS",
-    "SLURM_CPUS_PER_TASK",
-    "NCPUS",
-    "PBS_NP",
-    "SLURM_NTASKS",
+    "QCTHREADS",
 )
 
 

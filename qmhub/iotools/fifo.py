@@ -71,8 +71,7 @@ class IOFifo(object):
         self._system.wrap_positions()
 
         self._fout = open(output, "wb")
-        self._fout.write(energy.tobytes())
-        self._fout.write(forces.tobytes(order="F"))
+        self._write_results(energy, forces)
 
         while True:
 
@@ -90,8 +89,14 @@ class IOFifo(object):
 
             self._system.wrap_positions()
 
-            self._fout.write(energy.tobytes())
-            self._fout.write(forces.tobytes(order="F"))
+            self._write_results(energy, forces)
+
+    def _write_results(self, energy, forces):
+        # FIFO writes are buffered by Python; flush each packet so the driver
+        # can read small energy/force responses immediately.
+        self._fout.write(energy.tobytes())
+        self._fout.write(forces.tobytes(order="F"))
+        self._fout.flush()
 
     @staticmethod
     def save_input(input):
