@@ -11,6 +11,19 @@ class QChem(QMBase):
 
     OUTPUT = None
     default_options = default_options
+    _THREAD_ENV_VARS = (
+        "QCTHREADS",
+        "OMP_NUM_THREADS",
+        "SLURM_CPUS_PER_TASK",
+        "NCPUS",
+        "PBS_NP",
+        "SLURM_NTASKS",
+    )
+    _CRAY_ENV_VARS = (
+        "CRAYPE_VERSION",
+        "CRAY_CPU_TARGET",
+        "CRAY_LD_LIBRARY_PATH",
+    )
 
     def gen_input(self):
         """Generate input file for QM software."""
@@ -43,12 +56,64 @@ class QChem(QMBase):
     def gen_cmdline(self):
         """Generate commandline for QM calculation."""
 
-        os.environ["QCSCRATCH"] = str(self.cwd.resolve())
+        os.environ["QCSCRATCH"] = str(Path(self.cwd).resolve())
 
         cmdline = f"cd {self.cwd}; "
-        cmdline += f"qchem -nt {self.nproc} qchem.inp qchem.out save > qchem_run.log"
+        cmdline += " ".join(self._get_qchem_env_assignments())
+        cmdline += f" qchem -nt {self._get_qchem_nthreads()} qchem.inp qchem.out save > qchem_run.log"
 
         return cmdline
+
+    @staticmethod
+    def _get_positive_int_env(name):
+        value = os.environ.get(name)
+        if value is None:
+            return None
+
+        try:
+            value = int(value)
+        except ValueError:
+            return None
+
+        if value > 0:
+            return value
+        return None
+
+    def _get_qchem_nthreads(self):
+        for name in self._THREAD_ENV_VARS:
+            value = self._get_positive_int_env(name)
+            if value is not None:
+                return value
+
+        try:
+            nproc = int(self.nproc)
+        except (TypeError, ValueError):
+            return 1
+
+        if nproc > 0:
+            return nproc
+        return 1
+
+    def _is_cray_openmp_environment(self):
+        if os.environ.get("PE_ENV", "").upper() == "CRAY":
+            return True
+
+        return any(name in os.environ for name in self._CRAY_ENV_VARS)
+
+    def _get_qchem_env_assignments(self):
+        nthreads = str(self._get_qchem_nthreads())
+        env = [
+            ("QCTHREADS", nthreads),
+            ("OMP_NUM_THREADS", nthreads),
+        ]
+
+        if self._is_cray_openmp_environment():
+            if "OMP_PLACES" not in os.environ:
+                env.append(("OMP_PLACES", "cores"))
+            if "OMP_PROC_BIND" not in os.environ:
+                env.append(("OMP_PROC_BIND", "close"))
+
+        return [f"{key}={value}" for key, value in env]
 
     def _get_qm_energy(self, qm_cache=None, output=None):
         """Get QM energy from output of QM calculation."""
