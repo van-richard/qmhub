@@ -11,6 +11,12 @@ class QChem(QMBase):
 
     OUTPUT = None
     default_options = default_options
+    # Q-Chem's MM ESP/field scratch filenames vary by version/build.
+    # Prefer known binary pairs over version sniffing.
+    _MM_ESP_BINARY_OUTPUTS = (
+        ("save/1521.0", "save/329.0"),
+        ("save/5001.0", "save/5002.0"),
+    )
     _THREAD_ENV_VARS = (
         "QCTHREADS",
         "OMP_NUM_THREADS",
@@ -155,20 +161,99 @@ class QChem(QMBase):
         if qm_cache is not None:
             qm_cache.update_cache()
 
-        output = output or ("save/1521.0", "save/329.0")
+        n_mm = len(self.mm_charges)
+        mm_esp = np.zeros((4, n_mm))
 
-        mm_esp = np.zeros((4, len(self.mm_charges)))
+        if n_mm == 0:
+            return mm_esp
 
-        try:
-            mm_esp[0] = np.fromfile(Path(self.cwd).joinpath(output[0]), dtype="f8", count=len(self.mm_charges))
-            mm_esp[1:] = -np.fromfile(Path(self.cwd).joinpath(output[1]), dtype="f8", count=(len(self.mm_charges)*3)).reshape(-1, 3).T
-        except:
-            raise
-        else:
-            os.remove(Path(self.cwd).joinpath(output[0]))
-            os.remove(Path(self.cwd).joinpath(output[1]))
+        tried = []
+
+        if output is not None:
+            # Explicit output is an internal/direct parser hook; normal runs
+            # discover Q-Chem's known binary scratch pairs below.
+            potential, field = self._validate_mm_esp_output(output)
+            potential_path = Path(self.cwd).joinpath(potential)
+            field_path = Path(self.cwd).joinpath(field)
+            return self._read_binary_mm_esp(potential_path, field_path, n_mm)
+
+        # Do not auto-read text files such as esp.dat or plot.esp here. They
+        # can be derived artifacts left over from an earlier MD step.
+        for potential, field in self._MM_ESP_BINARY_OUTPUTS:
+            potential_path = Path(self.cwd).joinpath(potential)
+            field_path = Path(self.cwd).joinpath(field)
+            tried.append(self._describe_binary_mm_esp_pair(potential_path, field_path, n_mm))
+
+            if self._valid_binary_mm_esp_pair(potential_path, field_path, n_mm):
+                return self._read_binary_mm_esp(potential_path, field_path, n_mm)
+
+        raise FileNotFoundError(self._format_mm_esp_error(tried, n_mm))
+
+    @staticmethod
+    def _validate_mm_esp_output(output):
+        if len(output) != 2:
+            raise ValueError("Q-Chem MM ESP output must contain potential and field paths.")
+
+        return output
+
+    @staticmethod
+    def _valid_binary_mm_esp_pair(potential_path, field_path, n_mm):
+        # Exact byte sizes prove the pair matches the current MM atom count
+        # before the files are consumed and removed.
+        return (
+            potential_path.exists()
+            and field_path.exists()
+            and potential_path.stat().st_size == n_mm * 8
+            and field_path.stat().st_size == n_mm * 3 * 8
+        )
+
+    @staticmethod
+    def _describe_binary_mm_esp_pair(potential_path, field_path, n_mm):
+        potential_size = potential_path.stat().st_size if potential_path.exists() else "missing"
+        field_size = field_path.stat().st_size if field_path.exists() else "missing"
+        return (
+            f"{potential_path} ({potential_size}; expected {n_mm * 8} bytes), "
+            f"{field_path} ({field_size}; expected {n_mm * 3 * 8} bytes)"
+        )
+
+    @staticmethod
+    def _read_binary_mm_esp(potential_path, field_path, n_mm):
+        mm_esp = np.zeros((4, n_mm))
+
+        if not QChem._valid_binary_mm_esp_pair(Path(potential_path), Path(field_path), n_mm):
+            raise ValueError(
+                "Invalid Q-Chem binary MM ESP files: "
+                + QChem._describe_binary_mm_esp_pair(Path(potential_path), Path(field_path), n_mm)
+            )
+
+        mm_esp[0] = np.fromfile(potential_path, dtype="f8", count=n_mm)
+        mm_esp[1:] = -np.fromfile(field_path, dtype="f8", count=(n_mm * 3)).reshape(-1, 3).T
+
+        # Match the previous lifecycle for Q-Chem binary scratch outputs.
+        os.remove(potential_path)
+        os.remove(field_path)
 
         return mm_esp
+
+    def _format_mm_esp_error(self, tried, n_mm):
+        save_path = Path(self.cwd).joinpath("save")
+        save_files = []
+
+        if save_path.exists():
+            save_files = sorted(path.name for path in save_path.glob("*.0"))
+
+        message = [
+            "Could not find valid Q-Chem MM ESP output.",
+            f"Expected potential size: {n_mm * 8} bytes.",
+            f"Expected field size: {n_mm * 3 * 8} bytes.",
+            "Tried:",
+            *[f"  - {item}" for item in tried],
+        ]
+
+        if save_files:
+            message.extend(["Files present in save/:", "  - " + ", ".join(save_files)])
+
+        return "\n".join(message)
 
     def _get_mulliken_charges(self, qm_cache=None, output=None):
         """Get Mulliken charges from output of QM calculation."""

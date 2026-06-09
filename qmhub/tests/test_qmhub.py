@@ -30,16 +30,42 @@ def _clear_qchem_thread_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
-def _make_qchem(tmp_path):
+def _make_qchem(tmp_path, n_mm=0):
     return QChem(
         qm_positions=DependArray(np.zeros((3, 1))),
         qm_elements=DependArray(np.array([1])),
-        mm_positions=DependArray(np.zeros((3, 0))),
-        mm_charges=DependArray(np.array([])),
+        mm_positions=DependArray(np.zeros((3, n_mm))),
+        mm_charges=DependArray(np.ones(n_mm)),
         charge=0,
         mult=1,
         cwd=tmp_path,
     )
+
+
+def _write_binary_mm_esp(tmp_path, output):
+    potential = np.array([1.0, 2.0])
+    field = np.array([
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
+    ])
+
+    potential_path = tmp_path.joinpath(output[0])
+    field_path = tmp_path.joinpath(output[1])
+    potential_path.parent.mkdir(parents=True, exist_ok=True)
+    field_path.parent.mkdir(parents=True, exist_ok=True)
+
+    potential.astype("f8").tofile(potential_path)
+    field.astype("f8").tofile(field_path)
+
+    return potential, field
+
+
+def _assert_mm_esp(qchem, potential, field, **kwargs):
+    mm_esp = qchem._get_mm_esp(**kwargs)
+
+    assert mm_esp.shape == (4, len(potential))
+    assert np.allclose(mm_esp[0], potential)
+    assert np.allclose(mm_esp[1:], -field.T)
 
 
 def test_qmhub_imported():
@@ -125,3 +151,69 @@ def test_qchem_cmdline_preserves_user_cray_openmp_settings(tmp_path, monkeypatch
     assert "QCTHREADS=4 OMP_NUM_THREADS=4 qchem -nt 4" in qchem.cmdline
     assert "OMP_PLACES=cores" not in qchem.cmdline
     assert "OMP_PROC_BIND=close" not in qchem.cmdline
+
+
+def test_qchem_mm_esp_reads_existing_binary_pair(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=2)
+    output = ("save/1521.0", "save/329.0")
+    potential, field = _write_binary_mm_esp(tmp_path, output)
+
+    _assert_mm_esp(qchem, potential, field)
+
+    assert not tmp_path.joinpath(output[0]).exists()
+    assert not tmp_path.joinpath(output[1]).exists()
+
+
+def test_qchem_mm_esp_reads_new_binary_pair(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=2)
+    output = ("save/5001.0", "save/5002.0")
+    potential, field = _write_binary_mm_esp(tmp_path, output)
+
+    _assert_mm_esp(qchem, potential, field)
+
+    assert not tmp_path.joinpath(output[0]).exists()
+    assert not tmp_path.joinpath(output[1]).exists()
+
+
+def test_qchem_mm_esp_reads_explicit_binary_output(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=2)
+    output = ("custom/potential.bin", "custom/field.bin")
+    potential, field = _write_binary_mm_esp(tmp_path, output)
+
+    _assert_mm_esp(qchem, potential, field, output=output)
+
+    assert not tmp_path.joinpath(output[0]).exists()
+    assert not tmp_path.joinpath(output[1]).exists()
+
+
+def test_qchem_mm_esp_ignores_stale_text_outputs(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=2)
+
+    # These text files can survive from a previous run, so binary outputs must
+    # still be required for automatic Q-Chem MM ESP parsing.
+    np.savetxt(tmp_path.joinpath("esp.dat"), np.array([1.0, 2.0]))
+    np.savetxt(tmp_path.joinpath("efield.dat"), np.zeros((2, 3)))
+    tmp_path.joinpath("plot.esp").write_text("0.0 0.0 0.0 1.0\n1.0 1.0 1.0 2.0\n")
+
+    with pytest.raises(FileNotFoundError):
+        qchem._get_mm_esp()
+
+    assert tmp_path.joinpath("esp.dat").exists()
+    assert tmp_path.joinpath("efield.dat").exists()
+    assert tmp_path.joinpath("plot.esp").exists()
+
+
+def test_qchem_mm_esp_reports_missing_sources(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=2)
+    save_path = tmp_path.joinpath("save")
+    save_path.mkdir()
+    tmp_path.joinpath("save/123.0").write_bytes(b"not enough data")
+
+    with pytest.raises(FileNotFoundError) as error:
+        qchem._get_mm_esp()
+
+    message = str(error.value)
+    assert "Could not find valid Q-Chem MM ESP output." in message
+    assert "save/1521.0" in message
+    assert "save/5001.0" in message
+    assert "123.0" in message
