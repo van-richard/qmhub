@@ -3,12 +3,14 @@ Unit and regression test for the qmhub package.
 """
 
 # Import package, test suite, and other packages as needed
+import os
 import numpy as np
 import qmhub
 import pytest
 import sys
 
 from qmhub.utils.darray import DependArray
+from qmhub.utils.sys import get_nproc
 from qmhub.qmtools.qchem import QChem
 
 
@@ -104,6 +106,23 @@ def test_depend_array_indexing_and_cache_invalidation():
     source[1] = 3.0
 
     assert np.allclose(np.asarray(dependent), [2.0, 6.0, 8.0])
+
+
+def test_get_nproc_sanitizes_empty_openmp_threads(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("OMP_NUM_THREADS", "")
+
+    assert get_nproc() == 1
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+
+
+def test_get_nproc_uses_scheduler_threads_when_openmp_is_empty(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("OMP_NUM_THREADS", "")
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+
+    assert get_nproc() == 8
+    assert os.environ["OMP_NUM_THREADS"] == "8"
 
 
 def test_qchem_cmdline_defaults_to_one_thread(tmp_path, monkeypatch):
