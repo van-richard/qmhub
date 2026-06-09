@@ -1,0 +1,259 @@
+diff --git a/AmberTools/src/sander/mdread2.F90 b/AmberTools/src/sander/mdread2.F90
+index e0f65e5..448e270 100644
+--- a/AmberTools/src/sander/mdread2.F90
++++ b/AmberTools/src/sander/mdread2.F90
+@@ -564,6 +564,11 @@ use sgld, only : isgld,sgtype ! for RXSGLD
+          write(6, '(/a)') 'Bussi temperature regulation:'
+          write(6, '(5x,3(a,f10.5))') 'temp0   =', temp0, &
+                ', tempi   =', tempi, ', tautp   =', tautp
++      else if( ntt == 12) then
++         write(6,'(/a)') 'Stochastic Isokinetic Nose-Hoover RESPA (SINR) integration (Middle Scheme):'
++         write(6,'(5x,3(a,f10.5))') 'temp0   =',temp0, &
++               ', tempi   =',tempi,', gamma_ln=', gamma_ln
++         write(6,'(5x,a,i10,a,f12.5,/)') 'nkija   =',nkija,', sinrtau  =',sinrtau
+       end if
+ 
+       if( ntp /= 0 ) then
+@@ -2142,17 +2147,17 @@ use sgld, only : isgld,sgtype ! for RXSGLD
+       DELAYED_ERROR
+    end if
+ 
+-   if (ntt < 0 .or. ntt > 11) then                                      ! APJ
+-      write(6,'(/2x,a,i3,a)') 'NTT (',ntt,') must be between 0 and 11.' ! APJ
++   if (ntt < 0 .or. ntt > 12) then                                      ! APJ
++      write(6,'(/2x,a,i3,a)') 'NTT (',ntt,') must be between 0 and 12.' ! APJ
+       DELAYED_ERROR
+    end if
+    if ((ntt == 1 .or. ntt==11) .and. tautp < dt) then
+       write(6, '(/2x,a,f6.2,a)') 'TAUTP (',tautp,') < DT (step size)'
+       DELAYED_ERROR
+    end if
+-   if( ntt < 3 .or. ntt > 10) then  ! APJ
++   if( ntt < 3 .or. (ntt > 10 .and. ntt /= 12)) then  ! APJ
+       if( gamma_ln > 0.d0 ) then
+-         write(6,'(a)') 'ntt must be 3 to 10 if gamma_ln > 0' ! APJ
++         write(6,'(a)') 'ntt must be 3 to 10 or 12 if gamma_ln > 0' ! APJ
+          DELAYED_ERROR
+       end if
+    end if
+@@ -2199,26 +2204,31 @@ use sgld, only : isgld,sgtype ! for RXSGLD
+       end if
+    end if
+ 
+-   if (ntt == 10) then
++   if (ntt == 10 .or. ntt == 12) then
+       write(6,*) ""
+       if(gamma_ln <= 0.d0) then
+-         write(6,'(a)') 'gamma_ln must be > 0 when ntt = 10'
++         write(6,'(a)') 'gamma_ln must be > 0 when ntt = 10 or 12'
+          DELAYED_ERROR
+       end if
+       if(nkija < 1) then
+-         write(6,'(a)') 'nkija must be >= 1 when ntt = 10'
++         write(6,'(a)') 'nkija must be >= 1 when ntt = 10 or 12'
+          DELAYED_ERROR
+       end if
+       if(ntc /= 1 .or. ntf /= 1) then
+-         write(6,'(a)') 'ntc and ntf must be = 1 when ntt = 10'
++         write(6,'(a)') 'ntc and ntf must be = 1 when ntt = 10 or 12'
+          DELAYED_ERROR
+       end if
+       if(tempi > temp0) then
+-         write(6,'(a)') 'tempi must be <= temp0 when ntt = 10'
++         write(6,'(a)') 'tempi must be <= temp0 when ntt = 10 or 12'
+          DELAYED_ERROR
+       end if
+-      if(sinrtau < 0.5) then
+-         write(6,'(a)') 'sinrtau must be >= 0.5 when ntt = 10'
++      if(ntt == 10) then
++         if(sinrtau < 0.5) then
++            write(6,'(a)') 'sinrtau must be >= 0.5 when ntt = 10'
++            DELAYED_ERROR
++         end if
++      else if(sinrtau <= 0.d0) then
++         write(6,'(a)') 'sinrtau must be > 0 when ntt = 12'
+          DELAYED_ERROR
+       end if
+   end if
+diff --git a/AmberTools/src/sander/runmd.F90 b/AmberTools/src/sander/runmd.F90
+index 975c25e..d198d9d 100644
+--- a/AmberTools/src/sander/runmd.F90
++++ b/AmberTools/src/sander/runmd.F90
+@@ -336,7 +336,7 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+   ! Variables to control a Langevin dynamics simulation
+   logical is_langevin
+   _REAL_ gammai, c_implic, c_explic, c_ave, sdfac, ekins0
+-  _REAL_ dtx, dtxinv, dt5, dt25, factt, ekin0, ekinp0, dtcp, dttp
++  _REAL_ dtx, dtxinv, dt5, dt25, factt, ekin0, ekinp0, dtcp, dttp, sinrtaux
+   _REAL_ rndf, rndfs, rndfp, boltz2, pconv, tempsu
+   _REAL_ xcm(3), acm(3), ocm(3), vcm(3), ekcm, ekrot
+   _REAL_ emtmd
+@@ -1672,18 +1672,20 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+ 
+    ! }}}
+   end if
+-  if (ntt == 10) then
++  if (ntt == 10 .or. ntt == 12) then
+      !   initialize the SINR integrator: {{{
+ 
++    sinrtaux = sinrtau
++    if (ntt == 12) sinrtaux = sinrtau * 20.455d0
+ #ifdef MPI
+-    call sinr_init(natom, nkija, dtx, boltz2, temp0, gammai, sinrtau, &
++    call sinr_init(natom, nkija, dtx, boltz2, temp0, gammai, sinrtaux, &
+                    sinrdata, commsander)
+ #else
+-    call sinr_init(natom, nkija, dtx, boltz2, temp0, gammai, sinrtau, &
++    call sinr_init(natom, nkija, dtx, boltz2, temp0, gammai, sinrtaux, &
+                    sinrdata)
+ #endif
+     if (irest == 1) then
+-      call sinr_read_vels(v, sinrtau, sinrdata)
++      call sinr_read_vels(v, sinrtaux, sinrdata)
+     else
+       call init_sinr_vels(v, amass, sinrdata)
+     endif
+@@ -1693,12 +1695,14 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+       call sinr_mpi_init(v,numtasks,sinrdata)
+     end if
+ #endif
+-    call force(xx, ix, ih, ipairs, x, f, ener, ener%vir, &
+-               xx(l96), xx(l97), xx(l98), xx(l99), qsetup, &
+-               do_list_update,nstep)
+-    call iLndt(v, amass, istart, iend, sinrdata)
+-    call iLvdt(v, f, amass, istart, iend, sinrdata)
+-    call iLudt(x, v, istart, iend, sinrdata)
++    if (ntt == 10) then
++      call force(xx, ix, ih, ipairs, x, f, ener, ener%vir, &
++                 xx(l96), xx(l97), xx(l98), xx(l99), qsetup, &
++                 do_list_update,nstep)
++      call iLndt(v, amass, istart, iend, sinrdata)
++      call iLvdt(v, f, amass, istart, iend, sinrdata)
++      call iLudt(x, v, istart, iend, sinrdata)
++    end if
+     ! }}}
+   endif
+ 
+@@ -2733,18 +2737,28 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+     ! }}}
+ 
+ !------------------------------------------------------------------------------
+-  else if (ntt == 10) then
++  else if (ntt == 10 .or. ntt == 12) then
+   ! Stochastic Isokinetic Nose-Hoover RESPA (SINR) integrator) {{{
+-    call iLvdt(v, f, amass, istart, iend, sinrdata)
+-    call iLndt(v, amass, istart, iend, sinrdata)
+-    call iLndt(v, amass, istart, iend, sinrdata)
+-    call iLvdt(v, f, amass, istart, iend, sinrdata)
+-    call iLudt(x, v, istart, iend, sinrdata)
++    if (ntt == 10) then
++      call iLvdt(v, f, amass, istart, iend, sinrdata)
++      call iLndt(v, amass, istart, iend, sinrdata)
++      call iLndt(v, amass, istart, iend, sinrdata)
++      call iLvdt(v, f, amass, istart, iend, sinrdata)
++      call iLudt(x, v, istart, iend, sinrdata)
++    else
++      call iLvdt(v, f, amass, istart, iend, sinrdata)
++      call iLvdt(v, f, amass, istart, iend, sinrdata)
++      call iLqdt(x, v, istart, iend, sinrdata)
++      call iLndt(v, amass, istart, iend, sinrdata)
++      call iLodt(istart, iend, sinrdata)
++      call iLndt(v, amass, istart, iend, sinrdata)
++      call iLqdt(x, v, istart, iend, sinrdata)
++    end if
+     if (mod(nstep+1, ntpr*nrespa) == 0) then
+       call sinr_temp(v, amass, istart3, iend3, sinrdata)
+     end if
+     if (mod(nstep+1, ntwr) == 0 .or. nstep+1 == nstlim) then
+-      call sinr_write_vels(v, nstep, istart3, iend3, sinrtau, sinrdata)
++      call sinr_write_vels(v, nstep, istart3, iend3, sinrtaux, sinrdata)
+     end if
+     ! }}}
+ 
+@@ -3148,7 +3162,7 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+       f(i3) = x(i3)
+       x(i3) = aa*(x(i3)*aa + v(i3)*poly*dtx)
+     end do
+-  else if (ntt == 10) then
++  else if (ntt == 10 .or. ntt == 12) then
+     do i3 = istart3, iend3
+       f(i3) = x(i3)
+     end do
+@@ -5149,7 +5163,7 @@ subroutine runmd(xx, ix, ih, ipairs, x, winv, amass, f, v, vold, xr, xc, &
+   ! End Replica Exchange MD post-dynamics work }}}
+ 
+   ! Stochastic Isokinetic Nose-Hoover RESPA (SINR) integrator clean-up
+-  if (ntt==10) call sinr_cleanup(sinrdata)
++  if (ntt==10 .or. ntt==12) call sinr_cleanup(sinrdata)
+ 
+   ! Print averages {{{
+ #ifdef MPI
+diff --git a/AmberTools/src/sander/sinr_t.F90 b/AmberTools/src/sander/sinr_t.F90
+index 204dc81..fb582e9 100644
+--- a/AmberTools/src/sander/sinr_t.F90
++++ b/AmberTools/src/sander/sinr_t.F90
+@@ -33,8 +33,8 @@ module sinr_t
+ 
+   end type sinr
+ 
+-public sinr, sinr_init, init_sinr_vels, iLndt, iLvdt, iLudt, sinr_cleanup, &
+-       sinr_temp, sinr_write_vels, sinr_read_vels
++public sinr, sinr_init, init_sinr_vels, iLndt, iLvdt, iLudt, iLqdt, iLodt, &
++       sinr_cleanup, sinr_temp, sinr_write_vels, sinr_read_vels
+ 
+ #ifdef MPI
+ public sinr_mpi_init, sinr_test
+@@ -118,7 +118,7 @@ contains
+      if(sd%mpirank==0) then
+ #endif
+         write(6,*) ""
+-        write(6,'(A74)') "| Using Stochastic Isokinetic Nose-Hoover RESPA (SINR) integrator (ntt=10)"
++        write(6,'(A77)') "| Using Stochastic Isokinetic Nose-Hoover RESPA (SINR) integrator (ntt=10/12)"
+         write(6,'(A74)') "| ------------------------------------------------------------------------"
+         write(6,*) ""
+         write(6,'(A71)') "| NOTE: Only the coordinates are canonical while the velocites are NOT."
+@@ -359,6 +359,44 @@ contains
+      enddo
+    end subroutine iLudt
+ 
++   subroutine iLqdt(q,v,istart,iend,sd)
++     implicit none
++     type(sinr), intent(inout) :: sd
++     integer istart,iend
++     integer ind,i,j
++     double precision :: q(3*sd%natom),v(3*sd%natom)
++
++     ind = 3*(istart-1)
++
++     do i=istart,iend
++        do j=1,3
++           q(ind+j) = q(ind+j) + sd%dt2*v(ind+j)
++        enddo
++        ind=ind+3
++     enddo
++   end subroutine iLqdt
++
++   subroutine iLodt(istart,iend,sd)
++     use random
++     implicit none
++     type(sinr), intent(inout) :: sd
++     integer istart,iend
++     integer ind,i,j,k
++     double precision :: rnum
++
++     ind = 3*(istart-1)
++
++     do i=istart,iend
++        do j=1,3
++           do k=1,sd%L
++              call gauss(0.0d0,1.0d0,rnum)
++              sd%v2(k,ind+j) = sd%v2(k,ind+j)*sd%egt + rnum*sd%sigsqe2gt
++           enddo
++        enddo
++        ind=ind+3
++     enddo
++   end subroutine iLodt
++
+    subroutine sinr_temp(v,m,istart,iend,sd)
+      implicit none
+ #ifdef MPI

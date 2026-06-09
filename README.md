@@ -85,6 +85,9 @@ The hosted documentation is available at
 [panxl.github.io/qmhub](https://panxl.github.io/qmhub/). The source repository
 is available on [GitHub](https://github.com/panxl/qmhub/).
 
+AmberTools source patches for Sander/QMHub support are documented in
+[patches/README.md](patches/README.md).
+
 Development
 -----------
 
