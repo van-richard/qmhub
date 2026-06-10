@@ -17,6 +17,11 @@ class QChem(QMBase):
         ("save/1521.0", "save/329.0"),
         ("save/5001.0", "save/5002.0"),
     )
+    # Q-Chem 6.x 5001.0/5002.0 files have been observed with extra leading
+    # rows. Keep that trimming limited to this known pair.
+    _MM_ESP_TRAILING_MM_OUTPUTS = (
+        ("save/5001.0", "save/5002.0"),
+    )
     # Only explicit thread environment variables control Q-Chem threads.
     # Scheduler task counts describe MPI layout and are intentionally ignored.
     _THREAD_ENV_VARS = (
@@ -181,10 +186,28 @@ class QChem(QMBase):
         for potential, field in self._MM_ESP_BINARY_OUTPUTS:
             potential_path = Path(self.cwd).joinpath(potential)
             field_path = Path(self.cwd).joinpath(field)
-            tried.append(self._describe_binary_mm_esp_pair(potential_path, field_path, n_mm))
+            allow_trailing = (potential, field) in self._MM_ESP_TRAILING_MM_OUTPUTS
+            tried.append(
+                self._describe_binary_mm_esp_pair(
+                    potential_path,
+                    field_path,
+                    n_mm,
+                    allow_trailing,
+                )
+            )
 
-            if self._valid_binary_mm_esp_pair(potential_path, field_path, n_mm):
-                return self._read_binary_mm_esp(potential_path, field_path, n_mm)
+            if self._valid_binary_mm_esp_pair(
+                potential_path,
+                field_path,
+                n_mm,
+                allow_trailing,
+            ):
+                return self._read_binary_mm_esp(
+                    potential_path,
+                    field_path,
+                    n_mm,
+                    allow_trailing,
+                )
 
         raise FileNotFoundError(self._format_mm_esp_error(tried, n_mm))
 
@@ -196,37 +219,109 @@ class QChem(QMBase):
         return output
 
     @staticmethod
-    def _valid_binary_mm_esp_pair(potential_path, field_path, n_mm):
-        # Exact byte sizes prove the pair matches the current MM atom count
-        # before the files are consumed and removed.
-        return (
-            potential_path.exists()
-            and field_path.exists()
-            and potential_path.stat().st_size == n_mm * 8
-            and field_path.stat().st_size == n_mm * 3 * 8
-        )
+    def _valid_binary_mm_esp_pair(
+        potential_path,
+        field_path,
+        n_mm,
+        allow_trailing=False,
+    ):
+        row_count = QChem._binary_mm_esp_row_count(potential_path, field_path)
+
+        if row_count is None:
+            return False
+        if row_count == n_mm:
+            return True
+
+        # Q-Chem 6.x can prepend non-MM ESP rows to 5001.0/5002.0. QMHub
+        # writes $external_charges after $molecule, so the current MM block is
+        # the trailing n_mm rows when both files have a matching row count.
+        return allow_trailing and row_count > n_mm
 
     @staticmethod
-    def _describe_binary_mm_esp_pair(potential_path, field_path, n_mm):
+    def _binary_mm_esp_row_count(potential_path, field_path):
+        potential_path = Path(potential_path)
+        field_path = Path(field_path)
+
+        if not potential_path.exists() or not field_path.exists():
+            return None
+
+        potential_size = potential_path.stat().st_size
+        field_size = field_path.stat().st_size
+
+        if potential_size % 8 or field_size % 8:
+            return None
+
+        potential_rows = potential_size // 8
+        field_values = field_size // 8
+
+        if field_values != potential_rows * 3:
+            return None
+
+        return potential_rows
+
+    @staticmethod
+    def _describe_binary_mm_esp_pair(
+        potential_path,
+        field_path,
+        n_mm,
+        allow_trailing=False,
+    ):
         potential_size = potential_path.stat().st_size if potential_path.exists() else "missing"
         field_size = field_path.stat().st_size if field_path.exists() else "missing"
+        expected = f"expected {n_mm * 8} bytes"
+        field_expected = f"expected {n_mm * 3 * 8} bytes"
+
+        if allow_trailing:
+            expected += " or a larger matching file with trailing MM rows"
+            field_expected += " or a larger matching file with trailing MM rows"
+
         return (
-            f"{potential_path} ({potential_size}; expected {n_mm * 8} bytes), "
-            f"{field_path} ({field_size}; expected {n_mm * 3 * 8} bytes)"
+            f"{potential_path} ({potential_size}; {expected}), "
+            f"{field_path} ({field_size}; {field_expected})"
         )
 
     @staticmethod
-    def _read_binary_mm_esp(potential_path, field_path, n_mm):
+    def _read_binary_mm_esp(
+        potential_path,
+        field_path,
+        n_mm,
+        allow_trailing=False,
+    ):
+        potential_path = Path(potential_path)
+        field_path = Path(field_path)
         mm_esp = np.zeros((4, n_mm))
 
-        if not QChem._valid_binary_mm_esp_pair(Path(potential_path), Path(field_path), n_mm):
+        if not QChem._valid_binary_mm_esp_pair(
+            potential_path,
+            field_path,
+            n_mm,
+            allow_trailing,
+        ):
             raise ValueError(
                 "Invalid Q-Chem binary MM ESP files: "
-                + QChem._describe_binary_mm_esp_pair(Path(potential_path), Path(field_path), n_mm)
+                + QChem._describe_binary_mm_esp_pair(
+                    potential_path,
+                    field_path,
+                    n_mm,
+                    allow_trailing,
+                )
             )
 
-        mm_esp[0] = np.fromfile(potential_path, dtype="f8", count=n_mm)
-        mm_esp[1:] = -np.fromfile(field_path, dtype="f8", count=(n_mm * 3)).reshape(-1, 3).T
+        row_count = QChem._binary_mm_esp_row_count(potential_path, field_path)
+        skip_rows = row_count - n_mm
+
+        mm_esp[0] = np.fromfile(
+            potential_path,
+            dtype="f8",
+            count=n_mm,
+            offset=skip_rows * 8,
+        )
+        mm_esp[1:] = -np.fromfile(
+            field_path,
+            dtype="f8",
+            count=(n_mm * 3),
+            offset=skip_rows * 3 * 8,
+        ).reshape(-1, 3).T
 
         # Match the previous lifecycle for Q-Chem binary scratch outputs.
         os.remove(potential_path)

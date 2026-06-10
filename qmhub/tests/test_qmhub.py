@@ -54,12 +54,14 @@ def _make_qchem(tmp_path, n_mm=0):
     )
 
 
-def _write_binary_mm_esp(tmp_path, output):
-    potential = np.array([1.0, 2.0])
-    field = np.array([
-        [0.1, 0.2, 0.3],
-        [0.4, 0.5, 0.6],
-    ])
+def _write_binary_mm_esp(tmp_path, output, potential=None, field=None):
+    if potential is None:
+        potential = np.array([1.0, 2.0])
+    if field is None:
+        field = np.array([
+            [0.1, 0.2, 0.3],
+            [0.4, 0.5, 0.6],
+        ])
 
     potential_path = tmp_path.joinpath(output[0])
     field_path = tmp_path.joinpath(output[1])
@@ -478,6 +480,40 @@ def test_qchem_mm_esp_reads_new_binary_pair(tmp_path):
 
     assert not tmp_path.joinpath(output[0]).exists()
     assert not tmp_path.joinpath(output[1]).exists()
+
+
+def test_qchem_mm_esp_reads_trailing_rows_from_new_binary_pair(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=3)
+    output = ("save/5001.0", "save/5002.0")
+    potential = np.array([-100.0, -101.0, 1.0, 2.0, 3.0])
+    field = np.array([
+        [-10.0, -11.0, -12.0],
+        [-13.0, -14.0, -15.0],
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
+        [0.7, 0.8, 0.9],
+    ])
+    _write_binary_mm_esp(tmp_path, output, potential, field)
+
+    _assert_mm_esp(qchem, potential[-3:], field[-3:])
+
+    assert not tmp_path.joinpath(output[0]).exists()
+    assert not tmp_path.joinpath(output[1]).exists()
+
+
+def test_qchem_mm_esp_rejects_extra_rows_from_existing_binary_pair(tmp_path):
+    qchem = _make_qchem(tmp_path, n_mm=3)
+    output = ("save/1521.0", "save/329.0")
+    potential = np.array([-100.0, -101.0, 1.0, 2.0, 3.0])
+    field = np.zeros((5, 3))
+    _write_binary_mm_esp(tmp_path, output, potential, field)
+
+    with pytest.raises(FileNotFoundError) as error:
+        qchem._get_mm_esp()
+
+    assert "Could not find valid Q-Chem MM ESP output." in str(error.value)
+    assert tmp_path.joinpath(output[0]).exists()
+    assert tmp_path.joinpath(output[1]).exists()
 
 
 def test_qchem_mm_esp_reads_explicit_binary_output(tmp_path):
