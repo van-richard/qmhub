@@ -9,12 +9,15 @@ import os
 from pathlib import Path
 import threading
 import time
+import warnings
 
 import numpy as np
 import qmhub
 import pytest
 import sys
 
+from qmhub.electools.distance import get_dij_gradient
+from qmhub.electools.distance import get_dij_inverse
 from qmhub.iotools.bin import IOBin
 from qmhub.iotools.fifo import read_fifo_scalar
 from qmhub.iotools.fifo import IOFifo
@@ -185,6 +188,35 @@ def test_depend_array_derived_matrix_cache_invalidation():
     source[0, 0] = 5.0
 
     assert np.allclose(np.asarray(dependent), [3.0, -1.0])
+
+
+def test_distance_helpers_suppress_expected_zero_self_distance_warnings():
+    rij = DependArray(np.zeros((3, 1, 1)))
+    dij = DependArray(np.zeros((1, 1)))
+    dij_gradient = DependArray(func=get_dij_gradient, dependencies=[rij, dij])
+    dij_inverse = DependArray(func=get_dij_inverse, dependencies=[dij])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        gradient = np.asarray(dij_gradient)
+        inverse = np.asarray(dij_inverse)
+
+    assert np.all(np.isfinite(gradient))
+    assert np.allclose(gradient, 0.0)
+    assert np.isinf(inverse[0, 0])
+
+
+def test_distance_helpers_keep_nonzero_distance_values():
+    rij = np.array([[[3.0]], [[4.0]], [[0.0]]])
+    dij = np.array([[5.0]])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        gradient = get_dij_gradient(rij, dij)
+        inverse = get_dij_inverse(dij)
+
+    assert np.allclose(gradient[:, 0, 0], [0.6, 0.8, 0.0])
+    assert np.allclose(inverse, [[0.2]])
 
 
 def test_source_tree_helpmelib_extension_available_when_requested():

@@ -25,14 +25,21 @@ def get_dij_gradient(rij, dij=None):
     if dij is None:
         dij = get_dij(rij=rij)
 
-    return np.nan_to_num(rij / dij)
+    # The QM-vs-all distance matrix includes QM atoms themselves, so self-pairs
+    # intentionally create 0/0 here. Preserve the existing nan_to_num result and
+    # only suppress the expected warning.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.nan_to_num(rij / dij)
 
 
 def get_dij_inverse(dij=None, *, rij=None):
     if dij is None:
         dij = get_dij(rij=rij)
 
-    return 1 / dij
+    # Preserve the existing inf values for zero-distance self-pairs; downstream
+    # exclusion/masking logic removes those singular self-interactions.
+    with np.errstate(divide="ignore"):
+        return 1 / dij
 
 
 def get_dij_inverse_gradient(dij_inverse=None, dij_gradient=None, *, rij=None):
