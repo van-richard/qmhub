@@ -26,6 +26,10 @@ from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MPI_LAUNCH_DEFAULT = "mpirun -np 2"
+AMBER_MDOUT_FAILURE_RE = re.compile(
+    r"(^|\n)\s*(?:sander\s+bomb|fatal(?:\s+error)?\b)",
+    re.IGNORECASE,
+)
 
 
 class TestFailure(RuntimeError):
@@ -51,6 +55,12 @@ class CaseResult:
 def tail(text: str, nlines: int = 40) -> str:
     lines = text.splitlines()
     return "\n".join(lines[-nlines:])
+
+
+def contains_amber_mdout_failure_marker(text: str) -> bool:
+    # Amber mdout can contain benign "error" text, including Ewald error
+    # estimates, so only match fatal run markers.
+    return AMBER_MDOUT_FAILURE_RE.search(text) is not None
 
 
 def format_command(args: Iterable[str]) -> str:
@@ -431,9 +441,8 @@ def sander_args(sander_cmd: list[str], mdin: str, mdout: str, restart_out: str) 
 
 def assert_mdout_success(mdout: Path) -> str:
     text = mdout.read_text(encoding="utf-8", errors="replace")
-    lower = text.lower()
-    if "error" in lower or "sander bomb" in lower:
-        raise TestFailure(f"{mdout} contains an Amber error marker\n{tail(text)}")
+    if contains_amber_mdout_failure_marker(text):
+        raise TestFailure(f"{mdout} contains an Amber fatal marker\n{tail(text)}")
     return text
 
 

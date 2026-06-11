@@ -223,8 +223,10 @@ new file mode 100644
 +       end if
 +
 +       if ( qmhub_nml%comm == 2 ) then
-+          ! Make FIFO input file
-+          call_buffer = 'mkfifo '//trim(inpfile)
++          ! Make FIFO exchange files. QMHub may create the output FIFO after
++          ! Sander has already written input data, so create it here too to
++          ! avoid a first-step startup race.
++          call_buffer = 'mkfifo '//trim(inpfile)//' '//trim(outfile)
 +
 +          if ( qmhub_nml%debug > 0 ) then
 +             write(6,'(2a)') 'call_buffer=', trim(call_buffer)
@@ -233,7 +235,7 @@ new file mode 100644
 +          stat = system(trim(call_buffer))
 +          if ( stat /= 0 ) then
 +             call sander_bomb('get_qmhub_forces (qm2_extern_qmhub_module)', &
-+                  'Error with system call (making fifo file)', &
++                  'Error with system call (making QMHub FIFO files)', &
 +                  'Will quit now.')
 +          end if
 +

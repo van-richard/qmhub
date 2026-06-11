@@ -5,6 +5,7 @@ Unit and regression test for the qmhub package.
 # Import package, test suite, and other packages as needed
 import io
 import importlib
+import importlib.util
 import os
 from pathlib import Path
 import threading
@@ -70,6 +71,19 @@ def _make_orca(tmp_path, n_mm=0):
         mult=1,
         cwd=tmp_path,
     )
+
+
+def _load_amber_smoke_runner():
+    path = Path(__file__).resolve().parents[2].joinpath(
+        "devtools",
+        "amber-qmhub-tests",
+        "run_amber_qmhub_tests.py",
+    )
+    spec = importlib.util.spec_from_file_location("run_amber_qmhub_tests", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _write_binary_mm_esp(tmp_path, output, potential=None, field=None):
@@ -283,6 +297,15 @@ def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
     assert get_nproc() == 64
 
 
+def test_get_nproc_ignores_thread_counts(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("QCTHREADS", "8")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    monkeypatch.setenv("MKL_NUM_THREADS", "6")
+
+    assert get_nproc() == 1
+
+
 def test_get_nthreads_ignores_scheduler_task_counts(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
@@ -291,6 +314,23 @@ def test_get_nthreads_ignores_scheduler_task_counts(monkeypatch):
     monkeypatch.setenv("SLURM_NTASKS", "64")
 
     assert get_nthreads() == 1
+
+
+def test_amber_mdout_scanner_allows_benign_error_estimates():
+    runner = _load_amber_smoke_runner()
+
+    text = """
+ Ewald error estimate: 0.1234E-04
+ A V E R A G E S   O V E R
+"""
+
+    assert not runner.contains_amber_mdout_failure_marker(text)
+
+
+def test_amber_mdout_scanner_rejects_sander_bomb():
+    runner = _load_amber_smoke_runner()
+
+    assert runner.contains_amber_mdout_failure_marker(" SANDER BOMB in routine foo")
 
 
 def test_orca_uses_scheduler_process_count(tmp_path, monkeypatch):

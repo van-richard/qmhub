@@ -1,8 +1,9 @@
 import os
 import subprocess as sp
 
-# Process-based backends such as ORCA can use scheduler task counts, while
-# threaded backends such as Q-Chem should only use explicit thread variables.
+# Keep process and thread controls separate: process-based backends such as
+# ORCA use scheduler task counts, while threaded backends such as Q-Chem use
+# explicit thread variables.
 _PROCESS_ENV_VARS = (
     "SLURM_NTASKS",
     "PBS_NP",
@@ -62,4 +63,4 @@ def get_nthreads():
 
 def get_nproc():
     """Get the number of processes for QM calculation."""
-    return _get_first_positive_int_env(_PROCESS_ENV_VARS + _THREAD_ENV_VARS) or 1
+    return _get_first_positive_int_env(_PROCESS_ENV_VARS) or 1
