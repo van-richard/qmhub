@@ -311,20 +311,27 @@ def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
     assert get_nproc() == 64
 
 
-def test_get_nproc_ignores_thread_counts(monkeypatch):
+def test_get_nproc_uses_qcthreads_legacy_fallback(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("QCTHREADS", "8")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
     monkeypatch.setenv("MKL_NUM_THREADS", "6")
 
-    assert get_nproc() == 1
+    assert get_nproc() == 8
 
 
-def test_get_nproc_ignores_slurm_cpus_per_task(monkeypatch):
+def test_get_nproc_uses_openmp_threads_legacy_fallback(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("OMP_NUM_THREADS", "8")
+
+    assert get_nproc() == 8
+
+
+def test_get_nproc_uses_slurm_cpus_per_task_legacy_fallback(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
 
-    assert get_nproc() == 1
+    assert get_nproc() == 8
 
 
 def test_get_nthreads_ignores_scheduler_process_counts(monkeypatch):

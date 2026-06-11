@@ -61,6 +61,11 @@ pbc = true
 qm = pyscf
 ```
 
+> **Note:** These PySCF examples are illustrative only and do not run in the
+> current QMHub codebase because `pyscf` is not currently registered in
+> `QM_TO_CLASS_MAP`. Current implemented engines include `qchem`, `miniqc`,
+> `orca`, `sqm`, `dftd4`, `pydftd3`, `pyh4`, `torch`, and `dummy`.
+
 Python API Example
 ------------------
 
