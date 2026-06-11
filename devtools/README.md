@@ -24,6 +24,14 @@ This directory contains OS agnostic helper scripts which don't fall in any of th
 * `scripts`
   * `create_conda_env.py`: Helper program for spinning up new conda environments based on a starter file with Python Version and Env. Name command-line options
 
+### External Amber/QMHub smoke tests:
+
+* `amber-qmhub-tests`: repository-local smoke tests for an already installed
+  and patched AmberTools setup. These tests launch `sander` or `sander.MPI`
+  and are not installed into `site-packages` as package unit tests. See
+  `amber-qmhub-tests/README.md` for the required checkout-based workflow,
+  Amber input files, environment variables, and optional Q-Chem settings.
+
 
 ## How to contribute changes
 - Clone the repository if you have write access to the main repo, fork the repository if you are a collaborator.

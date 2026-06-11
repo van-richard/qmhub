@@ -6,6 +6,8 @@ QMHUB_AMBER_TEST_WORK ?= $(THIS_DIR)/work
 
 help:
 	@echo "External Amber/QMHub smoke tests"
+	@echo "Run from this repository checkout with the qmhub environment active."
+	@echo "These tests are not installed into site-packages."
 	@echo ""
 	@echo "Targets:"
 	@echo "  make test.serial    Run patched serial sander/sqm/QMHub checks"
@@ -20,7 +22,7 @@ help:
 	@echo "  QMHUB_AMBER_QMCHARGE=0"
 	@echo "  QMHUB_AMBER_SPIN=1"
 	@echo "  MPI_LAUNCH='mpirun -np 2'"
-	@echo "  QMHUB_RUN_QCHEM=0|1"
+	@echo "  QMHUB_RUN_QCHEM=0|auto|1"
 	@echo "  QMHUB_KEEP_WORK=1"
 	@echo "  QMHUB_AMBER_TEST_WORK=/path/to/workdir"
 

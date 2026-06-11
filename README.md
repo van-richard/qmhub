@@ -93,6 +93,12 @@ is available on [GitHub](https://github.com/panxl/qmhub/).
 AmberTools source patches for Sander/QMHub support are documented in
 [patches/README.md](patches/README.md).
 
+External Amber/QMHub smoke tests for patched AmberTools installations live in
+[`devtools/amber-qmhub-tests`](devtools/amber-qmhub-tests). Run them from a
+repository checkout with the `qmhub` conda environment active; they are not
+installed into `site-packages` and should not be run from an installed
+`site-packages/qmhub` directory.
+
 Development
 -----------
 
