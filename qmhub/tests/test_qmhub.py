@@ -287,9 +287,23 @@ def test_get_nthreads_uses_mkl_threads_as_fallback(monkeypatch):
     assert get_nthreads() == 6
 
 
-def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
+def test_get_nthreads_uses_slurm_cpus_per_task_as_fallback(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+
+    assert get_nthreads() == 8
+
+
+def test_get_nthreads_prefers_qcthreads_over_slurm_cpus_per_task(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("QCTHREADS", "4")
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+
+    assert get_nthreads() == 4
+
+
+def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("NCPUS", "16")
     monkeypatch.setenv("PBS_NP", "32")
     monkeypatch.setenv("SLURM_NTASKS", "64")
@@ -306,9 +320,15 @@ def test_get_nproc_ignores_thread_counts(monkeypatch):
     assert get_nproc() == 1
 
 
-def test_get_nthreads_ignores_scheduler_task_counts(monkeypatch):
+def test_get_nproc_ignores_slurm_cpus_per_task(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+
+    assert get_nproc() == 1
+
+
+def test_get_nthreads_ignores_scheduler_process_counts(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("NCPUS", "16")
     monkeypatch.setenv("PBS_NP", "32")
     monkeypatch.setenv("SLURM_NTASKS", "64")
@@ -466,9 +486,17 @@ def test_qchem_cmdline_prefers_qcthreads_over_openmp(tmp_path, monkeypatch):
     assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
 
 
-def test_qchem_cmdline_ignores_scheduler_task_counts(tmp_path, monkeypatch):
+def test_qchem_cmdline_uses_slurm_cpus_per_task(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+
+    qchem = _make_qchem(tmp_path)
+
+    assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
+
+
+def test_qchem_cmdline_ignores_scheduler_process_counts(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("NCPUS", "16")
     monkeypatch.setenv("PBS_NP", "32")
     monkeypatch.setenv("SLURM_NTASKS", "64")

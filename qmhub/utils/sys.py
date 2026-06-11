@@ -1,18 +1,21 @@
 import os
 import subprocess as sp
 
-# Keep process and thread controls separate: process-based backends such as
-# ORCA use scheduler task counts, while threaded backends such as Q-Chem use
-# explicit thread variables.
+# Keep process and thread controls separate. SLURM_NTASKS and PBS_NP are
+# process counts for process-based backends such as ORCA, not Q-Chem OpenMP
+# thread counts.
 _PROCESS_ENV_VARS = (
     "SLURM_NTASKS",
     "PBS_NP",
     "NCPUS",
 )
+# SLURM_CPUS_PER_TASK is the CPU allocation for one scheduler task, so it is a
+# valid fallback for threaded Q-Chem runs after explicit thread variables.
 _THREAD_ENV_VARS = (
     "QCTHREADS",
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
+    "SLURM_CPUS_PER_TASK",
 )
 
 
