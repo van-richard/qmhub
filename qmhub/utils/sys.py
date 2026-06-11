@@ -1,11 +1,17 @@
 import os
 import subprocess as sp
 
-# Threaded QM backends should use explicit thread variables only. Scheduler
-# task-count variables describe MPI layout and can oversubscribe OpenMP codes.
+# Process-based backends such as ORCA can use scheduler task counts, while
+# threaded backends such as Q-Chem should only use explicit thread variables.
+_PROCESS_ENV_VARS = (
+    "SLURM_NTASKS",
+    "PBS_NP",
+    "NCPUS",
+)
 _THREAD_ENV_VARS = (
-    "OMP_NUM_THREADS",
     "QCTHREADS",
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
 )
 
 
@@ -34,19 +40,26 @@ def _get_positive_int_env(name):
     return None
 
 
-def get_nproc():
-    """Get the number of processes for QM calculation."""
-    nproc = 1
-
-    for name in _THREAD_ENV_VARS:
+def _get_first_positive_int_env(names):
+    for name in names:
         value = _get_positive_int_env(name)
         if value is not None:
-            nproc = value
-            break
+            return value
+    return None
+
+
+def get_nthreads():
+    """Get the number of threads for threaded QM calculations."""
+    nthreads = _get_first_positive_int_env(_THREAD_ENV_VARS) or 1
 
     # Some launchers export OMP_NUM_THREADS as an empty string. Normalize it
     # before OpenMP-backed libraries see an invalid environment value.
     if "OMP_NUM_THREADS" in os.environ and _get_positive_int_env("OMP_NUM_THREADS") is None:
-        os.environ["OMP_NUM_THREADS"] = str(nproc)
+        os.environ["OMP_NUM_THREADS"] = str(nthreads)
 
-    return nproc
+    return nthreads
+
+
+def get_nproc():
+    """Get the number of processes for QM calculation."""
+    return _get_first_positive_int_env(_PROCESS_ENV_VARS + _THREAD_ENV_VARS) or 1

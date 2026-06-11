@@ -450,7 +450,7 @@ new file mode 100644
 +
 +       ! Write cell basis
 +       do i = 1, 3
-+          write(iunit,'(3(e21.15,1x))') ucell(:,i)
++          write(iunit,'(3(e21.15,1x))') ucell(i,:)
 +       end do
 +
 +       close(iunit, iostat=ierr)
@@ -486,7 +486,7 @@ new file mode 100644
 +
 +       ! Write cell basis
 +       do i = 1, 3
-+          write(iunit) ucell(:,i)
++          write(iunit) ucell(i,:)
 +       end do
 +
 +       close(iunit, iostat=ierr)

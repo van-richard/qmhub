@@ -5,6 +5,7 @@ import numpy as np
 
 from .templates.qchem import get_qm_template, default_options
 from .qmbase import QMBase
+from ..utils.sys import get_nthreads
 
 
 class QChem(QMBase):
@@ -21,12 +22,6 @@ class QChem(QMBase):
     # rows. Keep that trimming limited to this known pair.
     _MM_ESP_TRAILING_MM_OUTPUTS = (
         ("save/5001.0", "save/5002.0"),
-    )
-    # Only explicit thread environment variables control Q-Chem threads.
-    # Scheduler task counts describe MPI layout and are intentionally ignored.
-    _THREAD_ENV_VARS = (
-        "OMP_NUM_THREADS",
-        "QCTHREADS",
     )
     _CRAY_ENV_VARS = (
         "CRAYPE_VERSION",
@@ -73,35 +68,10 @@ class QChem(QMBase):
 
         return cmdline
 
-    @staticmethod
-    def _get_positive_int_env(name):
-        value = os.environ.get(name)
-        if value is None:
-            return None
-
-        try:
-            value = int(value)
-        except ValueError:
-            return None
-
-        if value > 0:
-            return value
-        return None
-
     def _get_qchem_nthreads(self):
-        for name in self._THREAD_ENV_VARS:
-            value = self._get_positive_int_env(name)
-            if value is not None:
-                return value
-
-        try:
-            nproc = int(self.nproc)
-        except (TypeError, ValueError):
-            return 1
-
-        if nproc > 0:
-            return nproc
-        return 1
+        # Q-Chem -nt is an OpenMP thread count. Do not fall back to scheduler
+        # task counts from QMBase.nproc, which are process counts for MPI codes.
+        return get_nthreads()
 
     def _is_cray_openmp_environment(self):
         if os.environ.get("PE_ENV", "").upper() == "CRAY":

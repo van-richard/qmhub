@@ -23,7 +23,9 @@ from qmhub.iotools.fifo import read_fifo_scalar
 from qmhub.iotools.fifo import IOFifo
 from qmhub.iotools.text import IOText
 from qmhub.utils.darray import DependArray
+from qmhub.utils.sys import get_nthreads
 from qmhub.utils.sys import get_nproc
+from qmhub.qmtools.orca import ORCA
 from qmhub.qmtools.qchem import QChem
 
 
@@ -31,6 +33,7 @@ def _clear_qchem_thread_env(monkeypatch):
     for name in (
         "QCTHREADS",
         "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
         "SLURM_CPUS_PER_TASK",
         "NCPUS",
         "PBS_NP",
@@ -47,6 +50,18 @@ def _clear_qchem_thread_env(monkeypatch):
 
 def _make_qchem(tmp_path, n_mm=0):
     return QChem(
+        qm_positions=DependArray(np.zeros((3, 1))),
+        qm_elements=DependArray(np.array([1])),
+        mm_positions=DependArray(np.zeros((3, n_mm))),
+        mm_charges=DependArray(np.ones(n_mm)),
+        charge=0,
+        mult=1,
+        cwd=tmp_path,
+    )
+
+
+def _make_orca(tmp_path, n_mm=0):
+    return ORCA(
         qm_positions=DependArray(np.zeros((3, 1))),
         qm_elements=DependArray(np.array([1])),
         mm_positions=DependArray(np.zeros((3, n_mm))),
@@ -234,31 +249,59 @@ def test_source_tree_helpmelib_extension_available_when_requested():
     assert hasattr(module, "MatrixD")
 
 
-def test_get_nproc_sanitizes_empty_openmp_threads(monkeypatch):
+def test_get_nthreads_sanitizes_empty_openmp_threads(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("OMP_NUM_THREADS", "")
 
-    assert get_nproc() == 1
+    assert get_nthreads() == 1
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
-def test_get_nproc_uses_qcthreads_when_openmp_is_empty(monkeypatch):
+def test_get_nthreads_uses_qcthreads_when_openmp_is_empty(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("OMP_NUM_THREADS", "")
     monkeypatch.setenv("QCTHREADS", "8")
 
-    assert get_nproc() == 8
+    assert get_nthreads() == 8
     assert os.environ["OMP_NUM_THREADS"] == "8"
 
 
-def test_get_nproc_ignores_scheduler_task_counts(monkeypatch):
+def test_get_nthreads_uses_mkl_threads_as_fallback(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("MKL_NUM_THREADS", "6")
+
+    assert get_nthreads() == 6
+
+
+def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
     monkeypatch.setenv("NCPUS", "16")
     monkeypatch.setenv("PBS_NP", "32")
     monkeypatch.setenv("SLURM_NTASKS", "64")
 
-    assert get_nproc() == 1
+    assert get_nproc() == 64
+
+
+def test_get_nthreads_ignores_scheduler_task_counts(monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setenv("NCPUS", "16")
+    monkeypatch.setenv("PBS_NP", "32")
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+
+    assert get_nthreads() == 1
+
+
+def test_orca_uses_scheduler_process_count(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+
+    orca = _make_orca(tmp_path)
+    orca.gen_input()
+
+    assert orca.nproc == 64
+    assert "%pal nprocs 64 end" in tmp_path.joinpath("orca.inp").read_text()
 
 
 def test_read_fifo_scalar_assigns_to_zero_dimensional_step():
@@ -373,14 +416,14 @@ def test_qchem_cmdline_uses_qcthreads(tmp_path, monkeypatch):
     assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
 
 
-def test_qchem_cmdline_prefers_openmp_over_qcthreads(tmp_path, monkeypatch):
+def test_qchem_cmdline_prefers_qcthreads_over_openmp(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     monkeypatch.setenv("QCTHREADS", "8")
 
     qchem = _make_qchem(tmp_path)
 
-    assert "QCTHREADS=2 OMP_NUM_THREADS=2 qchem -nt 2" in qchem.cmdline
+    assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
 
 
 def test_qchem_cmdline_ignores_scheduler_task_counts(tmp_path, monkeypatch):

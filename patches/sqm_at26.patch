@@ -123,9 +123,9 @@ diff --git a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90 b/AmberTools/src/sqm/qm2
                end if
    
 +              ! electric field
-+              mm_esp(2,j) = pair_force(1)
-+              mm_esp(3,j) = pair_force(2)
-+              mm_esp(4,j) = pair_force(3)
++              mm_esp(2,j) = mm_esp(2,j) + pair_force(1)
++              mm_esp(3,j) = mm_esp(3,j) + pair_force(2)
++              mm_esp(4,j) = mm_esp(4,j) + pair_force(3)
 +
 +              pair_force(1) = pair_force(1)*qm_xcrd(4,j)
 +              pair_force(2) = pair_force(2)*qm_xcrd(4,j)
