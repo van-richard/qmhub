@@ -63,9 +63,17 @@ After the patch applies cleanly, continue with the normal AmberTools build.
 `qm_theory='EXTERN'` calculations through QMHub when an `&qmhub` namelist is
 present, passes QM atom data, MM point charges, gradients, and unit-cell data
 between Sander and QMHub, and supports text, binary, and FIFO exchange modes.
-For QMHub EXTERN runs, it also adjusts periodic QM/MM pair-list handling so the
-full set of non-link MM atoms can be sent when the QMHub path disables the usual
-QM cutoff.
+For QMHub EXTERN runs, it also detects the `&qmhub` namelist separately from
+other EXTERN backends, adjusts periodic QM/MM pair-list handling so the full set
+of non-link MM atoms can be sent when the QMHub path disables the usual QM
+cutoff, and uses the arithmetic QM center for periodic pair-list imaging to
+match the AmberTools23 QMHub patch. Amber stores lattice vectors in the columns
+of `ucell`; the AmberTools26 QMHub text/binary exchange writes `ucell(:,i)`,
+matching AmberTools23 and the current QMHub readers' lattice-vector row order.
+Binary exchange writes QM and MM coordinate rows in the packed order consumed by
+the QMHub Sander driver. The patch also preserves link-pair MM charges in
+`qm_resp_charges` and redistributes `adjust_q` charge corrections onto QM and
+link atoms so subsequent QMHub charge handling has the adjusted values.
 
 `sqm_at26.patch` updates SQM/QMMM electrostatic handling. It adds storage for
 the electrostatic potential and field at MM atom positions from QM atoms,
@@ -73,12 +81,16 @@ extends the legal `qmmm_int` range from `0..5` to `0..7`, reduces QM-MM
 electrostatic damping for `qmmm_int=6` and `qmmm_int=7`, includes `qmmm_int=7`
 in AM1/PM3/PM6 core-core correction paths, increases external-charge input
 capacity, and reports MM electrostatic potential/field output when QMMM
-verbosity is high enough.
+verbosity is high enough. It allocates `qm_resp_charges` with link-atom slots so
+link-pair charges can be retained alongside QM atom charges. The reported
+`mm_esp` rows are indexed by SQM external-charge/QM-MM pair-list entry, not
+guaranteed original Amber atom IDs.
 
 `sinr_at26.patch` extends Sander SINR thermostat support by adding the
 `ntt=12` middle-scheme path. It updates input validation, SINR initialization,
 integration steps, restart velocity handling, trajectory cleanup, and printed
-thermostat information for `ntt=12`.
+thermostat information for `ntt=12`. The patch also routes `ntt=12` through the
+SINR atom-partitioning path used for parallel setup when `ntc=1`.
 
 ## New and relevant options
 
@@ -122,7 +134,10 @@ correction paths used by `qmmm_int=2`.
 
 The SINR patch allows `ntt=12`. For `ntt=12`, the patched validation requires
 `gamma_ln > 0`, `nkija >= 1`, `ntc=1`, `ntf=1`, `tempi <= temp0`, and
-`sinrtau > 0`.
+`sinrtau > 0`. The original `ntt=10` SINR path keeps its stricter
+`sinrtau >= 0.5` requirement; `ntt=12` accepts smaller positive `sinrtau`
+values and converts them internally before SINR initialization and restart
+velocity I/O.
 
 ## Troubleshooting
 

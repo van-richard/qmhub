@@ -90,7 +90,7 @@ diff --git a/AmberTools/src/sander/qm2_extern_qmhub_module.F90 b/AmberTools/src/
 new file mode 100644
 --- /dev/null
 +++ b/AmberTools/src/sander/qm2_extern_qmhub_module.F90
-@@ -0,0 +1,600 @@
+@@ -0,0 +1,599 @@
 +#include "../include/dprec.fh"
 +module qm2_extern_qmhub_module
 +! ----------------------------------------------------------------
@@ -452,7 +452,7 @@ new file mode 100644
 +
 +       ! Write cell basis
 +       do i = 1, 3
-+          write(iunit,'(3(e21.15,1x))') ucell(i,:)
++          write(iunit,'(3(e21.15,1x))') ucell(:,i)
 +       end do
 +
 +       close(iunit, iostat=ierr)
@@ -488,7 +488,7 @@ new file mode 100644
 +
 +       ! Write cell basis
 +       do i = 1, 3
-+          write(iunit) ucell(i,:)
++          write(iunit) ucell(:,i)
 +       end do
 +
 +       close(iunit, iostat=ierr)
@@ -508,10 +508,7 @@ new file mode 100644
 +
 +       ! Write QM and MM coordinates
 +       if ( nclatoms > 0 ) then
-+          do i = 1, 3
-+             write(iunit) qmcoords(i,:)
-+             write(iunit) clcoords(i,:)
-+          end do
++          write(iunit) ((qmcoords(i,:), clcoords(i,:)), i=1,3)
 +       else
 +          write(iunit) (qmcoords(i,:), i=1,3)
 +       end if
@@ -859,33 +856,14 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 diff --git a/AmberTools/src/sqm/qmmm_nml_module.F90 b/AmberTools/src/sqm/qmmm_nml_module.F90
 --- a/AmberTools/src/sqm/qmmm_nml_module.F90
 +++ b/AmberTools/src/sqm/qmmm_nml_module.F90
-@@ -108,7 +108,10 @@ type qmmm_nml_type
- 
-      ! QM theory selected, see qmmm_qmtheorymodule
-      type(qmTheoryType) :: qmtheory 
- 
+@@ -110,0 +111,3 @@
 +     ! True when qm_theory='EXTERN' is paired with a &qmhub namelist.
 +     logical :: qmhub_extern
 +
-      ! Charge of the QM region in electron units - must be an integer charge. (Default = 0)
-      integer :: qmcharge  
-      integer :: corecharge    ! lam81
-@@ -391,6 +394,7 @@ subroutine Bcast(self, commsander)
-      call mpi_bcast(self%lnk_atomic_no,        1, mpi_integer,          0, commsander, ier) 
-      call mpi_bcast(self%lnk_method,           1, mpi_integer,          0, commsander, ier) 
-      call mpi_bcast(self%qmgb,                 1, mpi_integer,          0, commsander, ier) 
+@@ -393,0 +397 @@
 +     call mpi_bcast(self%qmhub_extern,         1, mpi_logical,          0, commsander, ier)
-      call mpi_bcast(self%qmcharge,             1, mpi_integer,          0, commsander, ier) 
-      call mpi_bcast(self%spin,                 1, mpi_integer,          0, commsander, ier) 
-      call mpi_bcast(self%verbosity,            1, mpi_integer,          0, commsander, ier) 
-@@ -476,6 +480,7 @@ subroutine Print(self)
-     write(6,'(a,i5)')    'lnk_method                 = ', self%lnk_method
-     write(6,'(a,i5)')    'qmgb                       = ', self%qmgb
-     write(6,'(2a)')      'qmtheory                   = ', String(self%qmtheory)
+@@ -477,0 +482 @@
 +    write(6,'(a,l)')     'qmhub_extern                = ', self%qmhub_extern
-     write(6,'(a,i5)')    'qmcharge                   = ', self%qmcharge
-     write(6,'(a,i5)')    'spin                       = ', self%spin
-     write(6,'(a,i5)')    'verbosity                  = ', self%verbosity
 diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 --- a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 +++ b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
@@ -919,11 +897,11 @@ diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/q
           write(6, '(1x,a,/)') 'Could not find qmmm namelist'
           call mexit(6,1)
 @@ -537,6 +543,7 @@ subroutine qm2_read_nml( qmmm_nml, qmmm_struct, qmmm_mpi, qmmm_scratch, &
- 
+
     call CheckRetiredQmTheoryInputOption(qmtheory)
     call set(qmmm_nml%qmtheory, qm_theory)
 +   qmmm_nml%qmhub_extern = qmmm_nml%qmtheory%EXTERN .and. qmhub_extern
- 
+
     ! Read-in the user-defined parameter file (TL -- Rutgers, 2011)
     call ReadParameterFile(parameter_file)
 diff --git a/AmberTools/src/sqm/qm_zero_charges.F90 b/AmberTools/src/sqm/qm_zero_charges.F90
@@ -932,60 +910,94 @@ diff --git a/AmberTools/src/sqm/qm_zero_charges.F90 b/AmberTools/src/sqm/qm_zero
 @@ -91,0 +92,2 @@ subroutine qm_zero_mm_link_pair_main_chg(nlink,link_pairs,charges,scaled_mm_char
 +      ! Put MM-Link charges to Link atoms
 +      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
-@@ -99,0 +102,2 @@ subroutine qm_zero_mm_link_pair_main_chg(nlink,link_pairs,charges,scaled_mm_char
-+      ! Do not refresh qm_resp_charges here. Later save_charges=.false.
-+      ! calls may see charges(y)=0 after the first zeroing pass.
-@@ -137,2 +139,4 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -97,0 +100,2 @@ subroutine qm_zero_mm_link_pair_main_chg(nlink,link_pairs,charges,scaled_mm_char
++      ! Put MM-Link charges to Link atoms
++      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
+@@ -137,2 +139,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
 -   _REAL_ :: q_correction_sum, q_correction, correction, final_q_sum
 -   _REAL_ :: smallest_dist, vec(3), link_coord(3), r2
-+  _REAL_ :: q_correction_sum, q_correction, correction, correction_qm, final_q_sum
-+  _REAL_ :: smallest_dist, vec(3), link_coord(3), r2
-+  logical :: qmhub_adjust_qm_charges
-+  logical, external :: qmmm_qmhub_namelist_present
-@@ -151,0 +156 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
-+  qmhub_adjust_qm_charges = qmmm_qmhub_namelist_present()
++   _REAL_ :: q_correction_sum, q_correction, correction, correction_qm, final_q_sum
++   _REAL_ :: smallest_dist, vec(3), link_coord(3), r2
 @@ -168,0 +174 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
-+    if (qmhub_adjust_qm_charges) correction_qm = -q_correction / dble(nquant_nlink)
-@@ -193,0 +200,7 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
-+    if (qmhub_adjust_qm_charges) then
-+      do i = 1, natom
-+        if (atom_mask(i) .or. mm_link_mask(i)) then
-+          charge(i) = charge(i) + correction_qm
-+        end if
-+      end do
-+    end if
++    correction_qm = -q_correction / dble(nquant_nlink)
+@@ -193,0 +200,5 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
++    do i = 1, natom
++      if (atom_mask(i) .or. mm_link_mask(i)) then
++        charge(i) = charge(i) + correction_qm
++      end if
++    end do
 @@ -221,0 +235,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
-+    if (qmhub_adjust_qm_charges) correction_qm = -q_correction / dble(nquant_nlink)
++    correction_qm = -q_correction / dble(nquant_nlink)
 +
 @@ -228,0 +244,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
-+      else if (qmhub_adjust_qm_charges) then
++      else
 +        charge(i) = charge(i) + correction_qm
-@@ -250,0 +268,9 @@ end subroutine qmmm_adjust_q
-+logical function qmmm_qmhub_namelist_present()
-+
-+  use qmmm_module, only: qmmm_nml
-+  implicit none
-+
-+  qmmm_qmhub_namelist_present = qmmm_nml%qmhub_extern
-+
-+end function qmmm_qmhub_namelist_present
-+
-diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm_struct_module.F90
---- a/AmberTools/src/sqm/qmmm_struct_module.F90
-+++ b/AmberTools/src/sqm/qmmm_struct_module.F90
-@@ -62 +62,2 @@ module qmmm_struct_module
--     ! nquant long - original resp charges for the QM atoms as read from the prmtop file
-+     ! nquant_nlink long - original resp charges for the QM atoms and link atoms
-+     ! as read from the prmtop file or corresponding MM link-pair atoms
-@@ -283,0 +285,8 @@ contains
-+    if ( associated ( self%qm_resp_charges ) ) then
-+       if ( size(self%qm_resp_charges) < nquant+nlink ) then
-+          deallocate ( self%qm_resp_charges, stat=ier )
-+          REQUIRE(ier == 0)
-+          nullify ( self%qm_resp_charges )
-+       end if
-+    end if
-+
-@@ -285 +294 @@ contains
--       allocate ( self%qm_resp_charges(nquant), stat=ier )
-+       allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
+diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
+--- a/AmberTools/src/sander/qm_mm.F90
++++ b/AmberTools/src/sander/qm_mm.F90
+@@ -765 +765 @@
+-  use constants, only : zero, one, half, two, TWOPI
++  use constants, only : zero, one, half, two
+@@ -774 +773,0 @@
+-  _REAL_, parameter :: box_buffer = 1.0d-12
+@@ -785 +783,0 @@
+-  _REAL_ :: xcos,xsin,ycos,ysin,zcos,zsin
+@@ -867,2 +865,2 @@
+-  ! The modification below calculates the "circular mean"
+-  ! of each fractional coordinate
++  ! The modification below uses the arithmetic QM center,
++  ! matching AmberTools23 pair-list imaging.
+@@ -870,6 +868,3 @@
+-  xcos=zero
+-  ycos=zero
+-  zcos=zero
+-  xsin=zero
+-  ysin=zero
+-  zsin=zero
++  xtmp = zero
++  ytmp = zero
++  ztmp = zero
+@@ -877,10 +872,4 @@
+-     jqmatom = iqmatoms(j)
+-     frac(1:3) = x(1,jqmatom)*recip(1,1:3) &
+-          &    + x(2,jqmatom)*recip(2,1:3) &
+-          &    + x(3,jqmatom)*recip(3,1:3)
+-     xcos = xcos + cos(TWOPI*frac(1))
+-     xsin = xsin + sin(TWOPI*frac(1))
+-     ycos = ycos + cos(TWOPI*frac(2))
+-     ysin = ysin + sin(TWOPI*frac(2))
+-     zcos = zcos + cos(TWOPI*frac(3))
+-     zsin = zsin + sin(TWOPI*frac(3))
++    jqmatom = iqmatoms(j)
++    xtmp = xtmp + x(1,jqmatom)
++    ytmp = ytmp + x(2,jqmatom)
++    ztmp = ztmp + x(3,jqmatom)
+@@ -889,12 +878,3 @@
+-  xcos = xcos * one_nquant
+-  xsin = xsin * one_nquant
+-  ycos = ycos * one_nquant
+-  ysin = ysin * one_nquant
+-  zcos = zcos * one_nquant
+-  zsin = zsin * one_nquant
+-  frac(1) = atan2(xsin,xcos)/TWOPI
+-  frac(2) = atan2(ysin,ycos)/TWOPI
+-  frac(3) = atan2(zsin,zcos)/TWOPI
+-  xtmp = frac(1)*ucell(1,1) + frac(2)*ucell(1,2) + frac(3)*ucell(1,3)
+-  ytmp = frac(1)*ucell(2,1) + frac(2)*ucell(2,2) + frac(3)*ucell(2,3)
+-  ztmp = frac(1)*ucell(3,1) + frac(2)*ucell(3,2) + frac(3)*ucell(3,3)
++  xtmp = xtmp * one_nquant
++  ytmp = ytmp * one_nquant
++  ztmp = ztmp * one_nquant
+@@ -958,6 +938,6 @@
+-  xbnd0 = xbnd0 - qmmm_nml%qmcut - box_buffer
+-  ybnd0 = ybnd0 - qmmm_nml%qmcut - box_buffer
+-  zbnd0 = zbnd0 - qmmm_nml%qmcut - box_buffer
+-  xbnd1 = xbnd1 + qmmm_nml%qmcut + box_buffer
+-  ybnd1 = ybnd1 + qmmm_nml%qmcut + box_buffer
+-  zbnd1 = zbnd1 + qmmm_nml%qmcut + box_buffer
++  xbnd0 = xbnd0 - qmmm_nml%qmcut
++  ybnd0 = ybnd0 - qmmm_nml%qmcut
++  zbnd0 = zbnd0 - qmmm_nml%qmcut
++  xbnd1 = xbnd1 + qmmm_nml%qmcut
++  ybnd1 = ybnd1 + qmmm_nml%qmcut
++  zbnd1 = zbnd1 + qmmm_nml%qmcut

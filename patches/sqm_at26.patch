@@ -518,9 +518,12 @@ diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm
       ! Total number of atoms
       integer :: natom
       
+@@ -285 +288 @@ contains
+-       allocate ( self%qm_resp_charges(nquant), stat=ier )
++       allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
 @@ -345,6 +348,14 @@ contains
-        end if
-     end if
+       end if
+    end if
  
 +    if (qmmm_int /= 0) then
 +       if ( .not. associated ( self%mm_esp ) ) then

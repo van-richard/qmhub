@@ -75,6 +75,18 @@ index e0f65e5..448e270 100644
           DELAYED_ERROR
        end if
    end if
+diff --git a/AmberTools/src/sander/set.F90 b/AmberTools/src/sander/set.F90
+--- a/AmberTools/src/sander/set.F90
++++ b/AmberTools/src/sander/set.F90
+@@ -579,7 +579,7 @@ subroutine setpar(nspm, nsp, ntp, ipres, amass, ntc, ntt)
+          call mexit(6,1)
+ #ifndef LES /* avoid conflicts with LES and PIMD yes*/
+          ! divide among atoms with shake and sinr turned off
+-         else if (ntc == 1 .and. ntt /= 10) then
++         else if (ntc == 1 .and. ntt /= 10 .and. ntt /= 12) then
+             portion =natom/numtasks 
+             iparpt(0) = 0 
+             target = portion 
 diff --git a/AmberTools/src/sander/runmd.F90 b/AmberTools/src/sander/runmd.F90
 index 975c25e..d198d9d 100644
 --- a/AmberTools/src/sander/runmd.F90
