@@ -120,7 +120,9 @@ class ElecNear(object):
 
     @staticmethod
     def _get_dij_min_buffered(dij, mask):
-        dij_inverse = 1 / dij[:, mask]
+        # Reuse the distance helper so expected zero-distance self-pairs follow
+        # the same warning policy as the full electrostatic distance matrix.
+        dij_inverse = get_dij_inverse(dij[:, mask])
         dij_min = get_dij_min(dij_inverse)
         return dij_min
 

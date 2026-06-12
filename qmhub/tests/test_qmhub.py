@@ -19,6 +19,7 @@ import sys
 
 from qmhub.electools.distance import get_dij_gradient
 from qmhub.electools.distance import get_dij_inverse
+from qmhub.electools.elec_near import ElecNear
 from qmhub.iotools.bin import IOBin
 from qmhub.iotools.fifo import read_fifo_scalar
 from qmhub.iotools.fifo import IOFifo
@@ -246,6 +247,25 @@ def test_distance_helpers_keep_nonzero_distance_values():
 
     assert np.allclose(gradient[:, 0, 0], [0.6, 0.8, 0.0])
     assert np.allclose(inverse, [[0.2]])
+
+
+def test_near_field_buffered_distances_ignore_masked_self_distance_warnings():
+    dij = DependArray(np.array([[0.0, 2.0]]))
+    mask = DependArray(
+        func=ElecNear._get_near_field_buffered_mask,
+        kwargs={"cutoff": 10.0},
+        dependencies=[dij],
+    )
+    dij_min = DependArray(
+        func=ElecNear._get_dij_min_buffered,
+        dependencies=[dij, mask],
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        value = np.asarray(dij_min)
+
+    assert np.allclose(value, [2.0])
 
 
 def test_source_tree_helpmelib_extension_available_when_requested():
