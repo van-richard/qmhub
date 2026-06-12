@@ -191,8 +191,11 @@ class Ewald(object):
         r = rij[:, np.newaxis] + lattice[:, :, np.newaxis, np.newaxis]
         d = np.linalg.norm(r, axis=0)
         d2 = np.power(d, 2)
-        prod = erfc(alpha * d) / d
-        prod2 = prod / d2 + 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
+        # The center-cell QM self pairs are excluded below, but they pass
+        # through the vectorized Ewald formula first and have d == 0.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            prod = erfc(alpha * d) / d
+            prod2 = prod / d2 + 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
 
         if exclusion is not None:
             center_index = np.all(lattice == 0., axis=0)
@@ -221,8 +224,9 @@ class Ewald(object):
             r = rij[:, :, np.asarray(exclusion)]
             d = np.linalg.norm(r, axis=0)
             d2 = np.power(d, 2)
-            prod = (1 - erfc(alpha * d)) / d
-            prod2 = prod / d2 - 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
+            with np.errstate(divide="ignore", invalid="ignore"):
+                prod = (1 - erfc(alpha * d)) / d
+                prod2 = prod / d2 - 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
             np.nan_to_num(prod, copy=False)
             np.nan_to_num(prod2, copy=False)
 

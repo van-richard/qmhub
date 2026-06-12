@@ -185,8 +185,11 @@ class Ewald(object):
         r = positions[:, np.newaxis, np.asarray(exclusion)] - qm_positions[:, :, np.newaxis]
         d = np.linalg.norm(r, axis=0)
         d2 = np.power(d, 2)
-        prod = (1 - erfc(alpha * d)) / d
-        prod2 = prod / d2 - 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
+        # Excluded self pairs have d == 0 and are normalized below with
+        # nan_to_num; suppress only the expected vectorized formula warnings.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            prod = (1 - erfc(alpha * d)) / d
+            prod2 = prod / d2 - 2 * alpha * np.exp(-1 * alpha**2 * d2) / SQRTPI / d2
         np.nan_to_num(prod, copy=False)
         np.nan_to_num(prod2, copy=False)
 

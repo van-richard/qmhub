@@ -20,6 +20,7 @@ import sys
 from qmhub.electools.distance import get_dij_gradient
 from qmhub.electools.distance import get_dij_inverse
 from qmhub.electools.elec_near import ElecNear
+from qmhub.electools.ewald import Ewald as DirectEwald
 from qmhub.iotools.bin import IOBin
 from qmhub.iotools.fifo import read_fifo_scalar
 from qmhub.iotools.fifo import IOFifo
@@ -266,6 +267,35 @@ def test_near_field_buffered_distances_ignore_masked_self_distance_warnings():
         value = np.asarray(dij_min)
 
     assert np.allclose(value, [2.0])
+
+
+def test_direct_ewald_self_exclusions_do_not_warn():
+    positions = np.zeros((3, 1))
+    cell_basis = np.eye(3) * 20.0
+    real_lattice = np.zeros((3, 1))
+    recip_lattice = np.array([[1.0], [0.0], [0.0]])
+    exclusion = np.array([0])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        real = DirectEwald._get_ewald_real_tensor(
+            positions,
+            positions,
+            real_lattice,
+            alpha=0.3,
+            exclusion=exclusion,
+        )
+        recip = DirectEwald._get_ewald_recip_tensor(
+            positions,
+            positions,
+            recip_lattice,
+            cell_basis,
+            alpha=0.3,
+            exclusion=exclusion,
+        )
+
+    assert np.all(np.isfinite(real))
+    assert np.all(np.isfinite(recip))
 
 
 def test_source_tree_helpmelib_extension_available_when_requested():
