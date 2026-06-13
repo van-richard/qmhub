@@ -6,23 +6,40 @@ model setup, simulation settings, and quantum engine integrations. It provides
 both a command line entry point and a Python API for workflows that exchange
 systems, energies, and gradients through text, binary, or FIFO files.
 
-QMHub supports Python 3.9 through 3.14.
+QMHub currently uses a local source installation workflow with Python 3.12.
+There is no released package on PyPI, and the source checkout workflow below is
+the only supported installation path.
 
 Installation
 ------------
 
-Install the released package from PyPI:
+Create a conda environment with the required Python, NumPy, and SciPy versions:
 
 ```bash
-python -m pip install qmhub
+conda create --prefix ~/envs/qmhub python=3.12 numpy=2.4.6 scipy=1.17.1
+conda activate ~/envs/qmhub
 ```
 
-Install from source for development or local testing:
+Clone QMHub under `~/github` and install from the source checkout:
 
 ```bash
+mkdir -p ~/github
+cd ~/github
 git clone https://github.com/panxl/qmhub.git
-cd qmhub
-python -m pip install -e .
+cd ~/github/qmhub
+python -m pip install .
+```
+
+Before running `qmhub`, build the helPME Python extension and copy the compiled
+library into the installed QMHub package. QMHub will not run correctly until
+`helpmelib*.so` is present in the installed package directory:
+
+```bash
+cd ~/github
+git clone https://github.com/andysim/helpme.git helPME
+
+# After building helPME and producing helpmelib*.so:
+cp /path/to/helpmelib*.so ~/envs/qmhub/lib/python3.12/site-packages/qmhub/
 ```
 
 Command Line Usage
@@ -32,9 +49,9 @@ QMHub installs a `qmhub` command. Pass a configuration file and choose one
 exchange mode:
 
 ```bash
-qmhub config.ini --text exchange.txt
-qmhub config.ini --bin exchange.bin
-qmhub config.ini --fifo exchange.fifo
+qmhub qmhub.ini --text qmmm.inp
+qmhub qmhub.ini --bin qmmm.inp
+qmhub qmhub.ini --fifo qmmm.inp
 ```
 
 Optional flags include `--driver` to select a driver, `--cwd` to set the engine
@@ -58,13 +75,8 @@ cutoff = 10.0
 pbc = true
 
 [engine]
-qm = pyscf
+qm = qchem
 ```
-
-> **Note:** These PySCF examples are illustrative only and do not run in the
-> current QMHub codebase because `pyscf` is not currently registered in
-> `QM_TO_CLASS_MAP`. Current implemented engines include `qchem`, `miniqc`,
-> `orca`, `sqm`, `dftd4`, `pydftd3`, `pyh4`, `torch`, and `dummy`.
 
 Python API Example
 ------------------
@@ -77,9 +89,9 @@ from qmhub import QMMM
 
 qmmm = QMMM("text", driver=None, cwd=None)
 qmmm.setup_simulation("md")
-qmmm.load_system(Path("exchange.txt"))
+qmmm.load_system(Path("qmmm.inp"))
 qmmm.build_model(switching_type="lrec", cutoff=10.0, pbc=True)
-qmmm.add_engine("pyscf", name="qm", group_name="engine")
+qmmm.add_engine("qchem", name="qm", group_name="engine")
 qmmm.return_results()
 ```
 
