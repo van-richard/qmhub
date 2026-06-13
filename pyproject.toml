@@ -18,21 +18,23 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.10",
 ]
-requires-python = ">=3.9,<3.15"
-# Declare any run-time dependencies that should be installed with the package.
+# Prefer Python 3.12.13 for installation, for example:
+#   python3.12 -m pip install .
+# Python 3.10.15 is retained as the only compatibility fallback.
+# Tested with Python 3.12.13 and 3.10.15 only.
+requires-python = ">=3.10.15,<3.13,!=3.11.*"
+# Runtime dependencies are pinned for the tested Python patch versions.
 dependencies = [
-    "numpy>=2.0.2,<2.1; python_version == '3.9'",
-    "numpy>=2.2.0,<2.3; python_version == '3.10'",
-    "numpy>=2.3.0,<3; python_version >= '3.11' and python_version < '3.14'",
-    "numpy>=2.4.0,<3; python_version == '3.14'",
-    "scipy",
+    "numpy==2.4.6; python_full_version == '3.12.13'",
+    "scipy==1.17.1; python_full_version == '3.12.13'",
+    "numpy==2.2.6; python_full_version == '3.10.15'",
+    "scipy==1.15.3; python_full_version == '3.10.15'",
+    # Requires-Python cannot express "3.12.13 or 3.10.15" as an exact OR.
+    # This marker keeps unsupported patch versions from installing silently.
+    "qmhub-unsupported-python-version==0; python_full_version != '3.12.13' and python_full_version != '3.10.15'",
 ]
 
 # Update the urls once the hosting is set up.
