@@ -37,10 +37,10 @@ dependencies = [
     "qmhub-unsupported-python-version==0; python_full_version != '3.12.13' and python_full_version != '3.10.15'",
 ]
 
-# Update the urls once the hosting is set up.
+# Project URLs for this fork.
 [project.urls]
-"Source" = "https://github.com/panxl/qmhub/"
-"Documentation" = "https://panxl.github.io/qmhub/"
+"Source" = "https://github.com/van-richard/qmhub/"
+"Documentation" = "https://github.com/van-richard/qmhub/tree/vibing/docs/"
 
 [project.optional-dependencies]
 test = [

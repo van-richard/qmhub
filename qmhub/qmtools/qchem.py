@@ -18,7 +18,7 @@ class QChem(QMBase):
         ("save/1521.0", "save/329.0"),
         ("save/5001.0", "save/5002.0"),
     )
-    # Q-Chem 6.x 5001.0/5002.0 files have been observed with extra leading
+    # Q-Chem 5.2 5001.0/5002.0 files have been observed with extra leading
     # rows. Keep that trimming limited to this known pair.
     _MM_ESP_TRAILING_MM_OUTPUTS = (
         ("save/5001.0", "save/5002.0"),
@@ -202,7 +202,7 @@ class QChem(QMBase):
         if row_count == n_mm:
             return True
 
-        # Q-Chem 6.x can prepend non-MM ESP rows to 5001.0/5002.0. QMHub
+        # Q-Chem 5.2 can prepend non-MM ESP rows to 5001.0/5002.0. QMHub
         # writes $external_charges after $molecule, so the current MM block is
         # the trailing n_mm rows when both files have a matching row count.
         return allow_trailing and row_count > n_mm

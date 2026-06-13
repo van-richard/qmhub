@@ -35,9 +35,9 @@ If you prefer downloading the patches directly:
 
 ```bash
 cd ambertools26_src
-curl -OL https://raw.githubusercontent.com/panxl/qmhub/master/patches/qmhub_at26.patch
-curl -OL https://raw.githubusercontent.com/panxl/qmhub/master/patches/sqm_at26.patch
-curl -OL https://raw.githubusercontent.com/panxl/qmhub/master/patches/sinr_at26.patch
+curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/qmhub_at26.patch
+curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/sqm_at26.patch
+curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/sinr_at26.patch
 patch -p1 < qmhub_at26.patch
 patch -p1 < sqm_at26.patch
 patch -p1 < sinr_at26.patch
@@ -50,7 +50,7 @@ The patch `qmhub_at23.patch` applies only to AmberTools23:
 ```bash
 tar xf AmberTools23.tar.bz2
 cd amber22_src
-curl -OL https://raw.githubusercontent.com/panxl/qmhub/master/patches/qmhub_at23.patch
+curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/qmhub_at23.patch
 patch -p1 < qmhub_at23.patch
 ```
 

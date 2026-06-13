@@ -13,7 +13,7 @@ tests from this directory.
 ## Recommended workflow
 
 ```bash
-git clone https://github.com/panxl/qmhub.git
+git clone https://github.com/van-richard/qmhub.git
 cd qmhub
 conda activate qmhub
 python -m pip install -e .

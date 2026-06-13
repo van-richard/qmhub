@@ -16,7 +16,7 @@ Windows testing if you only plan to deploy on specific platforms. These are just
 This directory contains the files to setup the Conda environment for testing purposes
 
 * `conda-envs`: directory containing the YAML file(s) which fully describe Conda Environments, their dependencies, and those dependency provenance's
-  * `test_env.yaml`: Simple test environment file with base dependencies. Channels are not specified here and therefore respect global Conda configuration
+  * `test_env.yaml`: Simple test environment file with base dependencies. It declares the `conda-forge` and `defaults` channels used by CI.
   
 ### Additional Scripts:
 
@@ -37,7 +37,7 @@ This directory contains OS agnostic helper scripts which don't fall in any of th
 - Clone the repository if you have write access to the main repo, fork the repository if you are a collaborator.
 - Make a new branch with `git checkout -b {your branch name}`
 - Make changes and test your code
-- Ensure that the test environment dependencies (`conda-envs`) line up with the build and deploy dependencies (`conda-recipe/meta.yaml`)
+- Ensure that the test environment dependencies (`conda-envs`) line up with the project dependencies in `pyproject.toml`
 - Push the branch to the repo (either the main or your fork) with `git push -u origin {your branch name}`
   * Note that `origin` is the default name assigned to the remote, yours may be different
 - Make a PR on GitHub with your changes
@@ -52,13 +52,8 @@ This directory contains OS agnostic helper scripts which don't fall in any of th
    *  `git tag -a X.Y.Z [latest pushed commit] && git push --follow-tags`
 - [ ] Get the PR merged in
 
-## Versioneer Auto-version
-[Versioneer](https://github.com/warner/python-versioneer) will automatically infer what version 
-is installed by looking at the `git` tags and how many commits ahead this version is. The format follows 
-[PEP 440](https://www.python.org/dev/peps/pep-0440/) and has the regular expression of:
-```regexp
-\d+.\d+.\d+(?\+\d+-[a-z0-9]+)
-```
-If the version of this commit is the same as a `git` tag, the installed version is the same as the tag, 
-e.g. `qmhub-0.1.2`, otherwise it will be appended with `+X` where `X` is the number of commits 
-ahead from the last tag, and then `-YYYYYY` where the `Y`'s are replaced with the `git` commit hash.
+## Versioningit auto-version
+[versioningit](https://github.com/jwodder/versioningit) infers the installed
+version from `git` tags using the configuration in `pyproject.toml`. Builds may
+write the generated version module to `qmhub/_version.py`; that file is ignored
+as local build output.

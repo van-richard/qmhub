@@ -6,18 +6,27 @@ model setup, simulation settings, and quantum engine integrations. It provides
 both a command line entry point and a Python API for workflows that exchange
 systems, energies, and gradients through text, binary, or FIFO files.
 
-QMHub currently uses a local source installation workflow with Python 3.12.
-There is no released package on PyPI, and the source checkout workflow below is
-the only supported installation path.
+QMHub currently uses a local source installation workflow. Python 3.12.13 is
+the preferred runtime, and Python 3.10.15 is retained as the compatibility
+fallback. There is no released package on PyPI, and the source checkout workflow
+below is the only supported installation path.
 
 Installation
 ------------
 
-Create a conda environment with the required Python, NumPy, and SciPy versions:
+Create a conda environment with one of the tested Python, NumPy, and SciPy
+version sets. The preferred Python 3.12 environment is:
 
 ```bash
-conda create --prefix ~/envs/qmhub python=3.12 numpy=2.4.6 scipy=1.17.1
+conda create --prefix ~/envs/qmhub python=3.12.13 numpy=2.4.6 scipy=1.17.1
 conda activate ~/envs/qmhub
+```
+
+The compatibility fallback is:
+
+```bash
+conda create --prefix ~/envs/qmhub-py310 python=3.10.15 numpy=2.2.6 scipy=1.15.3
+conda activate ~/envs/qmhub-py310
 ```
 
 Clone QMHub under `~/github` and install from the source checkout:
@@ -25,22 +34,26 @@ Clone QMHub under `~/github` and install from the source checkout:
 ```bash
 mkdir -p ~/github
 cd ~/github
-git clone https://github.com/panxl/qmhub.git
+git clone https://github.com/van-richard/qmhub.git
 cd ~/github/qmhub
 python -m pip install .
 ```
 
-Before running `qmhub`, build the helPME Python extension and copy the compiled
-library into the installed QMHub package. QMHub will not run correctly until
-`helpmelib*.so` is present in the installed package directory:
+For PME-backed periodic electrostatics, build the helPME Python extension and
+copy the compiled library into the installed QMHub package. If `helpmelib*.so`
+is absent, QMHub falls back to the direct Ewald implementation and prints a
+warning; that fallback is slower and should be validated for the target system:
 
 ```bash
 cd ~/github
 git clone https://github.com/andysim/helpme.git helPME
 
-# After building helPME and producing helpmelib*.so:
+# After building helPME and producing helpmelib*.so for the active Python version:
 cp /path/to/helpmelib*.so ~/envs/qmhub/lib/python3.12/site-packages/qmhub/
 ```
+
+For the Python 3.10 fallback environment, use `~/envs/qmhub-py310` and the
+matching `python3.10/site-packages/qmhub/` path instead.
 
 Command Line Usage
 ------------------
@@ -95,12 +108,26 @@ qmmm.add_engine("qchem", name="qm", group_name="engine")
 qmmm.return_results()
 ```
 
+Q-Chem Runtime Notes
+--------------------
+
+The Q-Chem backend sets `QCSCRATCH` to the QMHub engine working directory and
+runs `qchem -nt ... qchem.inp qchem.out save` there. Q-Chem `-nt` is treated as
+an OpenMP thread count, so QMHub prefers thread-oriented variables in this order:
+`QCTHREADS`, `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, then `SLURM_CPUS_PER_TASK`.
+Scheduler process counts such as `SLURM_NTASKS`, `PBS_NP`, and `NCPUS` are not
+used for Q-Chem `-nt`.
+
+For MM electrostatic potential and field output, QMHub reads Q-Chem binary
+scratch files from `save/`. It checks the known pairs `1521.0`/`329.0` and
+Q-Chem 5.2-style `5001.0`/`5002.0`; text artifacts such as `esp.dat` or
+`plot.esp` are ignored during automatic parsing because they may be stale.
+
 Documentation
 -------------
 
-The hosted documentation is available at
-[panxl.github.io/qmhub](https://panxl.github.io/qmhub/). The source repository
-is available on [GitHub](https://github.com/panxl/qmhub/).
+Documentation sources are available in the [`docs`](docs) directory. The source
+repository is available on [GitHub](https://github.com/van-richard/qmhub/).
 
 AmberTools source patches for Sander/QMHub support are documented in
 [patches/README.md](patches/README.md).
