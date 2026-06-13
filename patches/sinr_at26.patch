@@ -75,18 +75,6 @@ index e0f65e5..448e270 100644
           DELAYED_ERROR
        end if
    end if
-diff --git a/AmberTools/src/sander/set.F90 b/AmberTools/src/sander/set.F90
---- a/AmberTools/src/sander/set.F90
-+++ b/AmberTools/src/sander/set.F90
-@@ -579,7 +579,7 @@ subroutine setpar(nspm, nsp, ntp, ipres, amass, ntc, ntt)
-          call mexit(6,1)
- #ifndef LES /* avoid conflicts with LES and PIMD yes*/
-          ! divide among atoms with shake and sinr turned off
--         else if (ntc == 1 .and. ntt /= 10) then
-+         else if (ntc == 1 .and. ntt /= 10 .and. ntt /= 12) then
-             portion =natom/numtasks 
-             iparpt(0) = 0 
-             target = portion 
 diff --git a/AmberTools/src/sander/runmd.F90 b/AmberTools/src/sander/runmd.F90
 index 975c25e..d198d9d 100644
 --- a/AmberTools/src/sander/runmd.F90
@@ -200,6 +188,19 @@ index 975c25e..d198d9d 100644
  
    ! Print averages {{{
  #ifdef MPI
+diff --git a/AmberTools/src/sander/set.F90 b/AmberTools/src/sander/set.F90
+index 6e3dfd8..ad6c9ec 100644
+--- a/AmberTools/src/sander/set.F90
++++ b/AmberTools/src/sander/set.F90
+@@ -579,7 +579,7 @@ subroutine setpar(nspm, nsp, ntp, ipres, amass, ntc, ntt)
+             call mexit(6,1)
+ #ifndef LES /* avoid conflicts with LES and PIMD yes*/
+          ! divide among atoms with shake and sinr turned off
+-         else if (ntc == 1 .and. ntt /= 10) then
++         else if (ntc == 1 .and. ntt /= 10 .and. ntt /= 12) then
+             portion =natom/numtasks 
+             iparpt(0) = 0 
+             target = portion 
 diff --git a/AmberTools/src/sander/sinr_t.F90 b/AmberTools/src/sander/sinr_t.F90
 index 204dc81..fb582e9 100644
 --- a/AmberTools/src/sander/sinr_t.F90

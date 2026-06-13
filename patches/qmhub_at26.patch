@@ -1,35 +1,33 @@
-diff --git a/AmberTools/src/sander/CMakeLists.txt b/AmberTools/src/sander/CMakeLists.txt
 --- a/AmberTools/src/sander/CMakeLists.txt
 +++ b/AmberTools/src/sander/CMakeLists.txt
-@@ -103 +103 @@ set(QM_SOURCE qm_mm.F90 qm_ewald.F90 qmmm_vsolv.F90
+@@ -103 +103 @@
 -    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90
 +    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90 qm2_extern_qmhub_module.F90
-@@ -111 +111 @@ set(QM_API_SOURCE qm_ewald.F90 qmmm_vsolv.F90
+@@ -111 +111 @@
 -    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90
 +    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90 qm2_extern_qmhub_module.F90
-@@ -208 +208 @@ set(LES_SOURCE nose_hoover_init_LES.F90
+@@ -208 +208 @@
 -    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90 qmmm_adaptive_module.F90
 +    qm2_extern_quick_module.F90 qm2_extern_genmpi_module.F90 qm2_extern_qmhub_module.F90 qmmm_adaptive_module.F90
-diff --git a/AmberTools/src/sander/Makefile b/AmberTools/src/sander/Makefile
 --- a/AmberTools/src/sander/Makefile
 +++ b/AmberTools/src/sander/Makefile
-@@ -131 +131 @@ QMOBJ= \
+@@ -131 +131 @@
 -    qm2_extern_genmpi_module.o quick_module.o tcpb_module.o \
 +    qm2_extern_genmpi_module.o qm2_extern_qmhub_module.o quick_module.o tcpb_module.o \
-@@ -149 +149 @@ QMAPIOBJ = \
+@@ -149 +149 @@
 -    qm2_extern_quick_module.o qm2_extern_genmpi_module.o quick_module.o tcpb_module.o \
 +    qm2_extern_quick_module.o qm2_extern_genmpi_module.o qm2_extern_qmhub_module.o quick_module.o tcpb_module.o \
-@@ -289 +289 @@ LESOBJ= memory_module.o stack.o file_io_dat.o \
+@@ -289 +289 @@
 -    qm2_extern_genmpi_module.o quick_module.o tcpb_module.o \
 +    qm2_extern_genmpi_module.o qm2_extern_qmhub_module.o quick_module.o tcpb_module.o \
-diff --git a/AmberTools/src/sander/depend b/AmberTools/src/sander/depend
 --- a/AmberTools/src/sander/depend
 +++ b/AmberTools/src/sander/depend
-@@ -4994,0 +4995 @@ qm2_extern_module.o: \
+@@ -4994,0 +4995 @@
 +                    qm2_extern_qmhub_module.o\
-@@ -5020,0 +5022 @@ qm2_extern_module.LES.o: \
+@@ -5020,0 +5022 @@
 +                    qm2_extern_qmhub_module.o\
-@@ -5082,0 +5085,12 @@ qm2_extern_qc_module.o:   qm2_extern_qc_module.F90
+@@ -5081,0 +5084,12 @@
++
 +qm2_extern_qmhub_module.o: \
 +                    ../include/dprec.fh\
 +                    qm2_extern_util_module.o\
@@ -41,39 +39,37 @@ diff --git a/AmberTools/src/sander/depend b/AmberTools/src/sander/depend
 +qm2_extern_qmhub_module.o:   qm2_extern_qmhub_module.F90
 +	@echo '[SANDER]  FC $<'
 +	$(VB)$(FC) $(FWARNFLAGS) $(SANDER_FPPFLAGS) -c $(FNOOPTFLAGS) $(FFLAGS) $(AMBERFFLAGS) $(RISMSANDER) -o $@ qm2_extern_qmhub_module.F90
-+
-diff --git a/AmberTools/src/sander/qm2_extern_module.F90 b/AmberTools/src/sander/qm2_extern_module.F90
 --- a/AmberTools/src/sander/qm2_extern_module.F90
 +++ b/AmberTools/src/sander/qm2_extern_module.F90
-@@ -39,0 +40 @@ module qm2_extern_module
+@@ -39,0 +40 @@
 +  use qm2_extern_qmhub_module , only: get_qmhub_forces
-@@ -57 +58,2 @@ module qm2_extern_module
+@@ -57 +58,2 @@
 -       qmcharges, nclatoms, clcoords, mmtypes, escf, dxyzqm, dxyzcl, id)
 +       qmcharges, qm_resp_charges, nclatoms, clcoords, mmtypes, ucell, escf, &
 +       dxyzqm, dxyzcl, id)
-@@ -69 +71,2 @@ module qm2_extern_module
+@@ -69 +71,2 @@
 -    _REAL_,  intent(inout) :: qmcharges(nqmatoms) ! QM charges
 +    _REAL_,  intent(inout) :: qmcharges(nqmatoms) ! Legacy EXTERN QM charges
 +    _REAL_,  intent(inout) :: qm_resp_charges(nqmatoms) ! QMHub RESP charges
-@@ -72,0 +76 @@ module qm2_extern_module
+@@ -72,0 +76 @@
 +    _REAL_,  intent(in) :: ucell(3,3)           ! Unit cell vectors
-@@ -106 +110,3 @@ module qm2_extern_module
+@@ -106 +110,3 @@
 -      call print_constants()
 +      if (extern_program /= 'qmhub') then
 +        call print_constants()
 +      end if
-@@ -156,0 +163,4 @@ module qm2_extern_module
+@@ -156,0 +163,4 @@
 +    case('qmhub')
 +      call get_qmhub_forces(do_gradient, nstep, ntpr, id, nqmatoms, qmcoords,&
 +           qmtypes, qm_resp_charges, nclatoms, clcoords, escf, dxyzqm, dxyzcl, &
 +           qmmm_nml%qmcharge, qmmm_nml%spin, ucell)
-@@ -201 +211 @@ module qm2_extern_module
+@@ -201 +211 @@
 -    character(len=20) :: programs(14) = (/'ani   ', 'adf   ', 'gms   ', 'tc    ', 'gau   ', &
 +    character(len=20) :: programs(15) = (/'ani   ', 'adf   ', 'gms   ', 'tc    ', 'gau   ', &
-@@ -204 +214 @@ module qm2_extern_module
+@@ -204 +214 @@
 -                                         'reaxff'/)
 +                                         'reaxff', 'qmhub '/)
-@@ -314,0 +324,7 @@ module qm2_extern_module
+@@ -314,0 +325,7 @@
 +    if ( trim(extern_program) == 'qmhub' ) then
 +       write (6,'(/a/a/a)') &
 +            '| Xiaoliang Pan and Yihan Shao', &
@@ -81,13 +77,11 @@ diff --git a/AmberTools/src/sander/qm2_extern_module.F90 b/AmberTools/src/sander
 +            '| https://github.com/panxl/qmhub'
 +    end if
 +
-@@ -342,0 +359 @@ module qm2_extern_module
+@@ -342,0 +360 @@
 +    use qm2_extern_qmhub_module, only: qmhub_finalize
-@@ -359,0 +377,2 @@ module qm2_extern_module
+@@ -359,0 +378,2 @@
 +     case('qmhub')
 +       call qmhub_finalize()
-diff --git a/AmberTools/src/sander/qm2_extern_qmhub_module.F90 b/AmberTools/src/sander/qm2_extern_qmhub_module.F90
-new file mode 100644
 --- /dev/null
 +++ b/AmberTools/src/sander/qm2_extern_qmhub_module.F90
 @@ -0,0 +1,599 @@
@@ -690,47 +684,110 @@ new file mode 100644
 +  end subroutine qmhub_finalize
 +
 +end module qm2_extern_qmhub_module
-diff --git a/AmberTools/src/sander/qm2_extern_torchani_module.F90 b/AmberTools/src/sander/qm2_extern_torchani_module.F90
 --- a/AmberTools/src/sander/qm2_extern_torchani_module.F90
 +++ b/AmberTools/src/sander/qm2_extern_torchani_module.F90
-@@ -184 +184 @@ subroutine get_torchani_forces(&
+@@ -184 +184 @@
 -    qmcharges = qmmm_struct%qm_resp_charges / amber_charge_units_to_au
 +    qmcharges = qmmm_struct%qm_resp_charges(1:nqmatoms) / amber_charge_units_to_au
-diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 --- a/AmberTools/src/sander/qm_mm.F90
 +++ b/AmberTools/src/sander/qm_mm.F90
-@@ -60 +60 @@ subroutine qm_mm(coords, natom, scaled_mm_charges, f, escf, periodic, &
+@@ -60 +60 @@
 -  use nblist,only: alpha,beta,gamma
 +  use nblist,only: alpha,beta,gamma,ucell
-@@ -460 +460,3 @@ subroutine qm_mm(coords, natom, scaled_mm_charges, f, escf, periodic, &
+@@ -460 +460,3 @@
 -                                  qmmm_struct%iqm_atomic_numbers,scf_mchg, &
 +                                  qmmm_struct%iqm_atomic_numbers, &
 +                                  scf_mchg, &
 +                                  qmmm_struct%qm_resp_charges, &
-@@ -462,2 +464,2 @@ subroutine qm_mm(coords, natom, scaled_mm_charges, f, escf, periodic, &
+@@ -462,2 +464,2 @@
 -                                  qmmm_struct%qm_mm_pair_atom_numbers, escf, &
 -                                  qmmm_struct%dxyzqm, qmmm_struct%dxyzcl, id)
 +                                  qmmm_struct%qm_mm_pair_atom_numbers, ucell, &
 +                                  escf, qmmm_struct%dxyzqm, qmmm_struct%dxyzcl, id)
-@@ -782 +784 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -763 +765 @@
+-  use constants, only : zero, one, half, two, TWOPI
++  use constants, only : zero, one, half, two
+@@ -772 +773,0 @@
+-  _REAL_, parameter :: box_buffer = 1.0d-12
+@@ -782,2 +783 @@
 -  logical :: include_atom
+-  _REAL_ :: xcos,xsin,ycos,ysin,zcos,zsin
 +  logical :: include_atom, noqmcutoff
-@@ -969 +971,2 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -865,2 +865,2 @@
+-  ! The modification below calculates the "circular mean"
+-  ! of each fractional coordinate
++  ! The modification below uses the arithmetic QM center,
++  ! matching AmberTools23 pair-list imaging.
+@@ -868,6 +868,3 @@
+-  xcos=zero
+-  ycos=zero
+-  zcos=zero
+-  xsin=zero
+-  ysin=zero
+-  zsin=zero
++  xtmp = zero
++  ytmp = zero
++  ztmp = zero
+@@ -875,10 +872,4 @@
+-     jqmatom = iqmatoms(j)
+-     frac(1:3) = x(1,jqmatom)*recip(1,1:3) &
+-          &    + x(2,jqmatom)*recip(2,1:3) &
+-          &    + x(3,jqmatom)*recip(3,1:3)
+-     xcos = xcos + cos(TWOPI*frac(1))
+-     xsin = xsin + sin(TWOPI*frac(1))
+-     ycos = ycos + cos(TWOPI*frac(2))
+-     ysin = ysin + sin(TWOPI*frac(2))
+-     zcos = zcos + cos(TWOPI*frac(3))
+-     zsin = zsin + sin(TWOPI*frac(3))
++    jqmatom = iqmatoms(j)
++    xtmp = xtmp + x(1,jqmatom)
++    ytmp = ytmp + x(2,jqmatom)
++    ztmp = ztmp + x(3,jqmatom)
+@@ -887,12 +878,3 @@
+-  xcos = xcos * one_nquant
+-  xsin = xsin * one_nquant
+-  ycos = ycos * one_nquant
+-  ysin = ysin * one_nquant
+-  zcos = zcos * one_nquant
+-  zsin = zsin * one_nquant
+-  frac(1) = atan2(xsin,xcos)/TWOPI
+-  frac(2) = atan2(ysin,ycos)/TWOPI
+-  frac(3) = atan2(zsin,zcos)/TWOPI
+-  xtmp = frac(1)*ucell(1,1) + frac(2)*ucell(1,2) + frac(3)*ucell(1,3)
+-  ytmp = frac(1)*ucell(2,1) + frac(2)*ucell(2,2) + frac(3)*ucell(2,3)
+-  ztmp = frac(1)*ucell(3,1) + frac(2)*ucell(3,2) + frac(3)*ucell(3,3)
++  xtmp = xtmp * one_nquant
++  ytmp = ytmp * one_nquant
++  ztmp = ztmp * one_nquant
+@@ -956,6 +938,6 @@
+-  xbnd0 = xbnd0 - qmmm_nml%qmcut - box_buffer
+-  ybnd0 = ybnd0 - qmmm_nml%qmcut - box_buffer
+-  zbnd0 = zbnd0 - qmmm_nml%qmcut - box_buffer
+-  xbnd1 = xbnd1 + qmmm_nml%qmcut + box_buffer
+-  ybnd1 = ybnd1 + qmmm_nml%qmcut + box_buffer
+-  zbnd1 = zbnd1 + qmmm_nml%qmcut + box_buffer
++  xbnd0 = xbnd0 - qmmm_nml%qmcut
++  ybnd0 = ybnd0 - qmmm_nml%qmcut
++  zbnd0 = zbnd0 - qmmm_nml%qmcut
++  xbnd1 = xbnd1 + qmmm_nml%qmcut
++  ybnd1 = ybnd1 + qmmm_nml%qmcut
++  zbnd1 = zbnd1 + qmmm_nml%qmcut
+@@ -969 +951,2 @@
 -  if ((xbnd1-xbnd0 > two*sphere) .or. (ybnd1-ybnd0 > two*sphere) .or. &
 +  noqmcutoff = .false.
 +  if ((xbnd1-xbnd0 > two*sphere) .and. (ybnd1-ybnd0 > two*sphere) .and. &
-@@ -970,0 +974,5 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -970,0 +954,5 @@
 +    noqmcutoff = qmmm_nml%qmhub_extern
 +  end if
 +  if ((.not. noqmcutoff) .and. &
 +      ((xbnd1-xbnd0 > two*sphere) .or. (ybnd1-ybnd0 > two*sphere) .or. &
 +      (zbnd1-zbnd0 > two*sphere))) then
-@@ -1017,2 +1028,2 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1017,2 +1005,2 @@
 -    xx = frac(1)*ucell(1,1) + frac(2)*ucell(1,2) + frac(3)*ucell(1,3)
 -    if ((xx > bxbnd(1)-offset(1)) .and. (xx < bxbnd(2)-offset(1))) then
 +    if (noqmcutoff) then
 +      xx = frac(1)*ucell(1,1) + frac(2)*ucell(1,2) + frac(3)*ucell(1,3)
-@@ -1020,9 +1031,19 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1020,9 +1008,19 @@
 -      if ((yy > bxbnd(3)-offset(2)) .and. (yy < bxbnd(4)-offset(2))) then
 -        zz = frac(1)*ucell(3,1) + frac(2)*ucell(3,2) + frac(3)*ucell(3,3)
 -        if ((zz > bxbnd(5)-offset(3)) .and. (zz < bxbnd(6) -offset(3))) then
@@ -759,7 +816,7 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 +            real_scratch(2,m) = yy
 +            real_scratch(3,m) = zz
 +          endif
-@@ -1045,24 +1066,42 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1045,24 +1043,42 @@
 -  ! Now calculate the pair list and fill qm_xcrd.  As in the
 -  ! non-periodic version of this subroutine above, n1 keeps
 -  ! a count of the number of atoms in the pair list.
@@ -826,7 +883,7 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 +              exit check_cut
 +            end if
 +            include_atom = .true.
-@@ -1071,2 +1110,9 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1071,2 +1087,9 @@
 -          include_atom = .true.
 -          exit check_cut
 +        end do check_cut
@@ -838,7 +895,7 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 +          qmmm_struct%qm_xcrd(3,n1) = real_scratch(3,m)
 +          qmmm_struct%qm_xcrd(4,n1) = scaled_mm_chrgs(m)
 +          include_atom = .false.
-@@ -1074,9 +1119,0 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1074,9 +1096,0 @@
 -      end do check_cut
 -      if (include_atom) then
 -        n1 = n1 + 1
@@ -848,12 +905,11 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
 -        qmmm_struct%qm_xcrd(3,n1) = real_scratch(3,m)
 -        qmmm_struct%qm_xcrd(4,n1) = scaled_mm_chrgs(m)
 -        include_atom = .false.
-@@ -1084,2 +1121,2 @@ subroutine qm_fill_qm_xcrd_periodic(x, natom, iqmatoms, scaled_mm_chrgs, &
+@@ -1084,2 +1098,2 @@
 -    end if
 -  end do
 +    end do
 +  end if
-diff --git a/AmberTools/src/sqm/qmmm_nml_module.F90 b/AmberTools/src/sqm/qmmm_nml_module.F90
 --- a/AmberTools/src/sqm/qmmm_nml_module.F90
 +++ b/AmberTools/src/sqm/qmmm_nml_module.F90
 @@ -110,0 +111,3 @@
@@ -864,140 +920,43 @@ diff --git a/AmberTools/src/sqm/qmmm_nml_module.F90 b/AmberTools/src/sqm/qmmm_nm
 +     call mpi_bcast(self%qmhub_extern,         1, mpi_logical,          0, commsander, ier)
 @@ -477,0 +482 @@
 +    write(6,'(a,l)')     'qmhub_extern                = ', self%qmhub_extern
-diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 --- a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 +++ b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
-@@ -156,6 +156,7 @@ subroutine qm2_read_nml( qmmm_nml, qmmm_struct, qmmm_mpi, qmmm_scratch, &
-    integer :: writepdb
-    integer :: qmmm_int !QM-MM interaction method
-    integer :: adjust_q
+@@ -158,0 +159 @@
 +   logical :: qmhub_extern
-    integer :: diag_routine !Controls diagonalization routine to use in SCF.
- #ifdef OPENMP
-    integer :: qmmm_omp_max_threads !Maximum number of openmp threads to use for parallel QMMM routines
-@@ -318,6 +319,7 @@ subroutine qm2_read_nml( qmmm_nml, qmmm_struct, qmmm_mpi, qmmm_scratch, &
-    lnk_method=1 !treat MMLink as being MM atom.
-    qmgb = 2 !Gets set to zero if igb==6 or igb==0.
-    qm_theory = ''
+@@ -320,0 +322 @@
 +   qmhub_extern = .false.
-    qmtheory = RETIRED_INPUT_OPTION
-    qmcharge = 0
-    corecharge = 0
-@@ -526,6 +528,12 @@ subroutine qm2_read_nml( qmmm_nml, qmmm_struct, qmmm_mpi, qmmm_scratch, &
-       rewind 5
-       if ( mdin_qmmm ) then
-          read(5,nml=qmmm)
+@@ -531,0 +534,6 @@
 +         rewind 5
 +         ! &qmhub selects the QMHub EXTERN path; do not combine it with
 +         ! another EXTERN backend namelist in the same MDIN.
 +         call nmlsrc('qmhub',5,ifind)
 +         qmhub_extern = ifind /= 0
 +         rewind 5
-       else
-          write(6, '(1x,a,/)') 'Could not find qmmm namelist'
-          call mexit(6,1)
-@@ -537,6 +543,7 @@ subroutine qm2_read_nml( qmmm_nml, qmmm_struct, qmmm_mpi, qmmm_scratch, &
-
-    call CheckRetiredQmTheoryInputOption(qmtheory)
-    call set(qmmm_nml%qmtheory, qm_theory)
+@@ -541,0 +550 @@
 +   qmmm_nml%qmhub_extern = qmmm_nml%qmtheory%EXTERN .and. qmhub_extern
-
-    ! Read-in the user-defined parameter file (TL -- Rutgers, 2011)
-    call ReadParameterFile(parameter_file)
-diff --git a/AmberTools/src/sqm/qm_zero_charges.F90 b/AmberTools/src/sqm/qm_zero_charges.F90
 --- a/AmberTools/src/sqm/qm_zero_charges.F90
 +++ b/AmberTools/src/sqm/qm_zero_charges.F90
-@@ -91,0 +92,2 @@ subroutine qm_zero_mm_link_pair_main_chg(nlink,link_pairs,charges,scaled_mm_char
+@@ -91,0 +92,2 @@
 +      ! Put MM-Link charges to Link atoms
 +      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
-@@ -97,0 +100,2 @@ subroutine qm_zero_mm_link_pair_main_chg(nlink,link_pairs,charges,scaled_mm_char
+@@ -97,0 +100,2 @@
 +      ! Put MM-Link charges to Link atoms
 +      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
-@@ -137,2 +139,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -137 +141 @@
 -   _REAL_ :: q_correction_sum, q_correction, correction, final_q_sum
--   _REAL_ :: smallest_dist, vec(3), link_coord(3), r2
 +   _REAL_ :: q_correction_sum, q_correction, correction, correction_qm, final_q_sum
-+   _REAL_ :: smallest_dist, vec(3), link_coord(3), r2
-@@ -168,0 +174 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -168,0 +173 @@
 +    correction_qm = -q_correction / dble(nquant_nlink)
-@@ -193,0 +200,5 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -193,0 +199,5 @@
 +    do i = 1, natom
 +      if (atom_mask(i) .or. mm_link_mask(i)) then
 +        charge(i) = charge(i) + correction_qm
 +      end if
 +    end do
-@@ -221,0 +235,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -221,0 +232,2 @@
 +    correction_qm = -q_correction / dble(nquant_nlink)
 +
-@@ -228,0 +244,2 @@ subroutine qmmm_adjust_q(adjust_q, natom, nquant, nquant_nlink, nlink, charge, i
+@@ -228,0 +241,2 @@
 +      else
 +        charge(i) = charge(i) + correction_qm
-diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
---- a/AmberTools/src/sander/qm_mm.F90
-+++ b/AmberTools/src/sander/qm_mm.F90
-@@ -765 +765 @@
--  use constants, only : zero, one, half, two, TWOPI
-+  use constants, only : zero, one, half, two
-@@ -774 +773,0 @@
--  _REAL_, parameter :: box_buffer = 1.0d-12
-@@ -785 +783,0 @@
--  _REAL_ :: xcos,xsin,ycos,ysin,zcos,zsin
-@@ -867,2 +865,2 @@
--  ! The modification below calculates the "circular mean"
--  ! of each fractional coordinate
-+  ! The modification below uses the arithmetic QM center,
-+  ! matching AmberTools23 pair-list imaging.
-@@ -870,6 +868,3 @@
--  xcos=zero
--  ycos=zero
--  zcos=zero
--  xsin=zero
--  ysin=zero
--  zsin=zero
-+  xtmp = zero
-+  ytmp = zero
-+  ztmp = zero
-@@ -877,10 +872,4 @@
--     jqmatom = iqmatoms(j)
--     frac(1:3) = x(1,jqmatom)*recip(1,1:3) &
--          &    + x(2,jqmatom)*recip(2,1:3) &
--          &    + x(3,jqmatom)*recip(3,1:3)
--     xcos = xcos + cos(TWOPI*frac(1))
--     xsin = xsin + sin(TWOPI*frac(1))
--     ycos = ycos + cos(TWOPI*frac(2))
--     ysin = ysin + sin(TWOPI*frac(2))
--     zcos = zcos + cos(TWOPI*frac(3))
--     zsin = zsin + sin(TWOPI*frac(3))
-+    jqmatom = iqmatoms(j)
-+    xtmp = xtmp + x(1,jqmatom)
-+    ytmp = ytmp + x(2,jqmatom)
-+    ztmp = ztmp + x(3,jqmatom)
-@@ -889,12 +878,3 @@
--  xcos = xcos * one_nquant
--  xsin = xsin * one_nquant
--  ycos = ycos * one_nquant
--  ysin = ysin * one_nquant
--  zcos = zcos * one_nquant
--  zsin = zsin * one_nquant
--  frac(1) = atan2(xsin,xcos)/TWOPI
--  frac(2) = atan2(ysin,ycos)/TWOPI
--  frac(3) = atan2(zsin,zcos)/TWOPI
--  xtmp = frac(1)*ucell(1,1) + frac(2)*ucell(1,2) + frac(3)*ucell(1,3)
--  ytmp = frac(1)*ucell(2,1) + frac(2)*ucell(2,2) + frac(3)*ucell(2,3)
--  ztmp = frac(1)*ucell(3,1) + frac(2)*ucell(3,2) + frac(3)*ucell(3,3)
-+  xtmp = xtmp * one_nquant
-+  ytmp = ytmp * one_nquant
-+  ztmp = ztmp * one_nquant
-@@ -958,6 +938,6 @@
--  xbnd0 = xbnd0 - qmmm_nml%qmcut - box_buffer
--  ybnd0 = ybnd0 - qmmm_nml%qmcut - box_buffer
--  zbnd0 = zbnd0 - qmmm_nml%qmcut - box_buffer
--  xbnd1 = xbnd1 + qmmm_nml%qmcut + box_buffer
--  ybnd1 = ybnd1 + qmmm_nml%qmcut + box_buffer
--  zbnd1 = zbnd1 + qmmm_nml%qmcut + box_buffer
-+  xbnd0 = xbnd0 - qmmm_nml%qmcut
-+  ybnd0 = ybnd0 - qmmm_nml%qmcut
-+  zbnd0 = zbnd0 - qmmm_nml%qmcut
-+  xbnd1 = xbnd1 + qmmm_nml%qmcut
-+  ybnd1 = ybnd1 + qmmm_nml%qmcut
-+  zbnd1 = zbnd1 + qmmm_nml%qmcut

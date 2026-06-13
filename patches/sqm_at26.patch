@@ -1,7 +1,8 @@
 diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
+index fd639c5..b07a633 100644
 --- a/AmberTools/src/sander/qm_mm.F90
 +++ b/AmberTools/src/sander/qm_mm.F90
-@@ -1279,7 +1279,7 @@ subroutine get_qm2_forces(master, calc_mchg_scf, natom, born_radii, &
+@@ -1259,7 +1259,7 @@ subroutine get_qm2_forces(master, calc_mchg_scf, natom, born_radii, &
          end do
        end if
        call qm2_get_qmmm_forces(qmmm_struct%dxyzqm, qmmm_struct%qm_xcrd, &
@@ -11,6 +12,7 @@ diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
    end if
  
 diff --git a/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90 b/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
+index 24120a3..c9c021d 100644
 --- a/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
 +++ b/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
 @@ -80,6 +80,13 @@ subroutine qm2_calc_rij_and_eqns(coords, nquant_nlink, crdsmm, natom, npairs)
@@ -28,6 +30,7 @@ diff --git a/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90 b/AmberTools/src/sqm/q
  
         do j=1,npairs
 diff --git a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90 b/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
+index d36bc22..22a00dd 100644
 --- a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
 +++ b/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
 @@ -1,7 +1,7 @@
@@ -464,6 +467,7 @@ diff --git a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90 b/AmberTools/src/sqm/qm2
           AA=oneRIJ*df_switch*pot_tmp
  
 diff --git a/AmberTools/src/sqm/qm2_hcore_qmmm.F90 b/AmberTools/src/sqm/qm2_hcore_qmmm.F90
+index e67dea1..eae2617 100644
 --- a/AmberTools/src/sqm/qm2_hcore_qmmm.F90
 +++ b/AmberTools/src/sqm/qm2_hcore_qmmm.F90
 @@ -257,7 +257,7 @@ SUBROUTINE qm2_rotate_qmmm_light(loop_count,IQM,jpair,xyz_qm,xyz_mm,E1B,ENUC)
@@ -485,6 +489,7 @@ diff --git a/AmberTools/src/sqm/qm2_hcore_qmmm.F90 b/AmberTools/src/sqm/qm2_hcor
           if (qmmm_nml%qmmmrij_incore) then
             rij = qm2_rij_eqns%qmmmrijdata(QMMMRIJ,loop_count)
 diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
+index 8e7a6f3..4a5614f 100644
 --- a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 +++ b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
 @@ -263,7 +263,7 @@ subroutine read_qmmm_nm_and_alloc( igb, ih, ix, x, cut, use_pme, ntb, qmstep, &
@@ -506,9 +511,10 @@ diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/q
     call int_legal_range('QMMM: (QM-MM diag_routine) ',diag_routine,0,7)
  #ifdef OPENMP
 diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm_struct_module.F90
+index baf4839..1ba893f 100644
 --- a/AmberTools/src/sqm/qmmm_struct_module.F90
 +++ b/AmberTools/src/sqm/qmmm_struct_module.F90
-@@ -87,6 +87,9 @@ module qmmm_struct_module
+@@ -86,6 +86,9 @@ module qmmm_struct_module
       ! Switched electrostatic potential at each QM atom site due to MM atoms within cutoff
       _REAL_, dimension(:), pointer :: switched_mmpot => null()
  
@@ -518,12 +524,18 @@ diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm
       ! Total number of atoms
       integer :: natom
       
-@@ -285 +288 @@ contains
+@@ -282,7 +285,7 @@ contains
+     nlink  = self%nlink
+ 
+     if ( .not. associated ( self%qm_resp_charges ) ) then
 -       allocate ( self%qm_resp_charges(nquant), stat=ier )
 +       allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
-@@ -345,6 +348,14 @@ contains
-       end if
-    end if
+        REQUIRE(ier == 0)
+     end if
+ 
+@@ -336,6 +339,14 @@ contains
+        end if
+     end if
  
 +    if (qmmm_int /= 0) then
 +       if ( .not. associated ( self%mm_esp ) ) then
@@ -536,7 +548,7 @@ diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm
      if (qmmm_switch) then
         ! In case of link atoms needs to be re-allocated since link atoms
         ! are not known when this routine is first called
-@@ -452,6 +463,13 @@ contains
+@@ -443,6 +454,13 @@ contains
         end if
      end if
  
@@ -551,6 +563,7 @@ diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm
      if (self%PM3MMX_INTERFACE) then
         ! needed for PM3/MM*
 diff --git a/AmberTools/src/sqm/sqm.F90 b/AmberTools/src/sqm/sqm.F90
+index 52f8629..becd6f8 100644
 --- a/AmberTools/src/sqm/sqm.F90
 +++ b/AmberTools/src/sqm/sqm.F90
 @@ -31,9 +31,9 @@ program sqm
