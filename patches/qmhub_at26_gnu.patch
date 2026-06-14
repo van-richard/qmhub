@@ -53,23 +53,51 @@
 +    _REAL_,  intent(inout) :: qm_resp_charges(nqmatoms) ! QMHub RESP charges
 @@ -72,0 +76 @@
 +    _REAL_,  intent(in) :: ucell(3,3)           ! Unit cell vectors
-@@ -106 +110,3 @@
+@@ -81,0 +85,7 @@
++#if defined(MPI)
++    include 'mpif.h'
++    integer, parameter :: extern_sleep_tag = 26026
++    integer :: ierr, done, i
++    integer :: ist(MPI_STATUS_SIZE)
++    logical :: extern_done
++#endif
+@@ -88 +98,11 @@
+-    if ( mytaskid /= 0 ) return
++    if ( mytaskid /= 0 ) then
++       done = 0
++       do
++          call mpi_iprobe(0, extern_sleep_tag, commworld, extern_done, ist, ierr)
++          if ( extern_done ) exit
++          call sleep(1)
++       end do
++       call mpi_recv(done, 1, MPI_INTEGER, 0, extern_sleep_tag, commworld, ist, ierr)
++       return
++    end if
++   
+@@ -106 +127,3 @@
 -      call print_constants()
 +      if (extern_program /= 'qmhub') then
 +        call print_constants()
 +      end if
-@@ -156,0 +163,4 @@
+@@ -156,0 +180,4 @@
 +    case('qmhub')
 +      call get_qmhub_forces(do_gradient, nstep, ntpr, id, nqmatoms, qmcoords,&
 +           qmtypes, qm_resp_charges, nclatoms, clcoords, escf, dxyzqm, dxyzcl, &
 +           qmmm_nml%qmcharge, qmmm_nml%spin, ucell)
-@@ -201 +211 @@
+@@ -190,0 +218,6 @@
++#if defined(MPI)
++    done = 1
++    do i = 1, numtasks - 1
++       call mpi_send(done, 1, MPI_INTEGER, i, extern_sleep_tag, commworld, ierr)
++    end do
++#endif
+@@ -201 +234 @@
 -    character(len=20) :: programs(14) = (/'ani   ', 'adf   ', 'gms   ', 'tc    ', 'gau   ', &
 +    character(len=20) :: programs(15) = (/'ani   ', 'adf   ', 'gms   ', 'tc    ', 'gau   ', &
-@@ -204 +214 @@
+@@ -204 +237 @@
 -                                         'reaxff'/)
 +                                         'reaxff', 'qmhub '/)
-@@ -314,0 +325,7 @@
+@@ -314,0 +347,7 @@
 +    if ( trim(extern_program) == 'qmhub' ) then
 +       write (6,'(/a/a/a)') &
 +            '| Xiaoliang Pan and Yihan Shao', &
@@ -77,14 +105,14 @@
 +            '| https://github.com/panxl/qmhub'
 +    end if
 +
-@@ -342,0 +360 @@
+@@ -342,0 +375 @@
 +    use qm2_extern_qmhub_module, only: qmhub_finalize
-@@ -359,0 +378,2 @@
+@@ -359,0 +392,2 @@
 +     case('qmhub')
 +       call qmhub_finalize()
 --- /dev/null
 +++ b/AmberTools/src/sander/qm2_extern_qmhub_module.F90
-@@ -0,0 +1,602 @@
+@@ -0,0 +1,604 @@
 +#include "../include/dprec.fh"
 +module qm2_extern_qmhub_module
 +! ----------------------------------------------------------------
@@ -417,6 +445,7 @@
 +       if ( ntb > 0 ) then
 +          write(iunit) (ucell(i,:), i=1,3)
 +       end if
++       flush(iunit)
 +    end if
 +
 +    if ( qmhub_nml%comm == 0 ) then
@@ -509,6 +538,7 @@
 +       else
 +          write(iunit) (qmcoords(i,:), i=1,3)
 +       end if
++       flush(iunit)
 +    end if
 +
 +    call debug_exit_function( 'write_inpfile', module_name, qmhub_nml%debug )
