@@ -30,6 +30,7 @@ from qmhub.utils.sys import get_nthreads
 from qmhub.utils.sys import get_nproc
 from qmhub.qmtools.orca import ORCA
 from qmhub.qmtools.qchem import QChem
+from qmhub.qmtools.sqm import SQM
 
 
 def _clear_qchem_thread_env(monkeypatch):
@@ -53,6 +54,18 @@ def _clear_qchem_thread_env(monkeypatch):
 
 def _make_qchem(tmp_path, n_mm=0):
     return QChem(
+        qm_positions=DependArray(np.zeros((3, 1))),
+        qm_elements=DependArray(np.array([1])),
+        mm_positions=DependArray(np.zeros((3, n_mm))),
+        mm_charges=DependArray(np.ones(n_mm)),
+        charge=0,
+        mult=1,
+        cwd=tmp_path,
+    )
+
+
+def _make_sqm(tmp_path, n_mm=0):
+    return SQM(
         qm_positions=DependArray(np.zeros((3, 1))),
         qm_elements=DependArray(np.array([1])),
         mm_positions=DependArray(np.zeros((3, n_mm))),
@@ -605,6 +618,55 @@ def test_qchem_cache_reports_command_failure_with_logs(tmp_path, monkeypatch):
     assert "launcher failed" in message
     assert "qchem.out" in message
     assert "qchem stopped before writing save files" in message
+
+
+def test_sqm_cache_reports_command_failure_with_output_tail(tmp_path, monkeypatch):
+    sqm = _make_sqm(tmp_path)
+    tmp_path.joinpath("sqm.out").write_text("sqm parser failed\ncheck qm_theory\n")
+    monkeypatch.setattr("qmhub.qmtools.qmbase.run_cmdline", lambda cmdline: 7)
+
+    with pytest.raises(RuntimeError) as error:
+        sqm._get_qm_cache()
+
+    message = str(error.value)
+    assert "SQM command failed with exit code 7." in message
+    assert "sqm -O -i sqm.inp -o sqm.out" in message
+    assert "Last lines of sqm.out" in message
+    assert "check qm_theory" in message
+
+
+def test_sqm_energy_reports_missing_scf_energy_marker(tmp_path):
+    sqm = _make_sqm(tmp_path)
+
+    with pytest.raises(RuntimeError) as error:
+        sqm._get_qm_energy(qm_cache=["sqm stopped before energy"])
+
+    message = str(error.value)
+    assert "Could not find SQM SCF energy in SQM output." in message
+    assert "QMMM: SCF Energy" in message
+    assert "sqm stopped before energy" in message
+
+
+def test_sqm_gradient_reports_missing_force_marker(tmp_path):
+    sqm = _make_sqm(tmp_path)
+
+    with pytest.raises(RuntimeError) as error:
+        sqm._get_qm_energy_gradient(qm_cache=["QMMM: SCF Energy = -1.0"])
+
+    message = str(error.value)
+    assert "Could not find SQM energy gradient in SQM output." in message
+    assert "Forces on QM atoms from SCF calculation" in message
+
+
+def test_sqm_mulliken_reports_missing_charge_marker(tmp_path):
+    sqm = _make_sqm(tmp_path)
+
+    with pytest.raises(RuntimeError) as error:
+        sqm._get_mulliken_charges(qm_cache=["QMMM: SCF Energy = -1.0"])
+
+    message = str(error.value)
+    assert "Could not find SQM Mulliken charges in SQM output." in message
+    assert "Atomic Charges" in message
 
 
 def test_qchem_energy_reads_valid_binary_and_removes(tmp_path):
