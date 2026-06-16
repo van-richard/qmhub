@@ -132,7 +132,28 @@ index 7b25357a..1ac95507 100644
      _REAL_, intent(out) :: escf                 ! SCF energy
      _REAL_, intent(out) :: dxyzqm(3,nqmatoms)   ! SCF QM gradient
      _REAL_, intent(out) :: dxyzcl(3,nclatoms)   ! SCF MM gradient
-@@ -97,7 +99,9 @@ module qm2_extern_module
+@@ -81,0 +83,7 @@ module qm2_extern_module
++#if defined(MPI)
++    include 'mpif.h'
++    integer, parameter :: extern_sleep_tag = 26026
++    integer :: ierr, done, i
++    integer :: ist(MPI_STATUS_SIZE)
++    logical :: extern_done
++#endif
+@@ -88 +97,11 @@ module qm2_extern_module
+-    if ( mytaskid /= 0 ) return
++    if ( mytaskid /= 0 ) then
++       done = 0
++       do
++          call mpi_iprobe(0, extern_sleep_tag, commworld, extern_done, ist, ierr)
++          if ( extern_done ) exit
++          call sleep(1)
++       end do
++       call mpi_recv(done, 1, MPI_INTEGER, 0, extern_sleep_tag, commworld, ist, ierr)
++       return
++    end if
++
+@@ -97,7 +116,9 @@ module qm2_extern_module
        call select_program(extern_program)
        call check_electrostatic_embedding(nclatoms, qmmm_nml%qmmm_int, extern_program)
        call print_citation_information(extern_program)
@@ -143,7 +164,7 @@ index 7b25357a..1ac95507 100644
        first_call = .false.
      end if
  
-@@ -156,6 +160,10 @@ module qm2_extern_module
+@@ -156,6 +177,10 @@ module qm2_extern_module
        call sander_bomb("qm2_extern_get_qm_forces", "Lio is not enabled", &
             "Check your installation or reconfigure with the -lio option.")
  #endif
@@ -154,7 +175,14 @@ index 7b25357a..1ac95507 100644
      case('fb')
  #ifdef FIREBALL
        call get_fb_forces( do_gradient, nstep, ntpr, id, nqmatoms, qmcoords,&
-@@ -179,10 +187,10 @@ module qm2_extern_module
+@@ -178,0 +204,6 @@ module qm2_extern_module
++#if defined(MPI)
++    done = 1
++    do i = 1, numtasks - 1
++       call mpi_send(done, 1, MPI_INTEGER, i, extern_sleep_tag, commworld, ierr)
++    end do
++#endif
+@@ -179,10 +210,10 @@ module qm2_extern_module
      implicit none
  
      integer :: i, ifind
@@ -167,7 +195,7 @@ index 7b25357a..1ac95507 100644
      character(len=20), intent(out) :: extern_program
  
      ! Select which external program to use
-@@ -293,6 +301,13 @@ module qm2_extern_module
+@@ -293,6 +324,13 @@ module qm2_extern_module
              '| DOI: 10.1021/acs.jctc.0c00874'
      end if
  
@@ -181,7 +209,7 @@ index 7b25357a..1ac95507 100644
    end subroutine print_citation_information
  
    ! Print information about natural constants
-@@ -321,6 +336,7 @@ module qm2_extern_module
+@@ -321,6 +359,7 @@ module qm2_extern_module
      use qm2_extern_genmpi_module, only: genmpi_finalize
  #endif
      use qm2_extern_reaxff_puremd_module, only: reaxff_puremd_finalize
@@ -189,7 +217,7 @@ index 7b25357a..1ac95507 100644
   
      character(len=20) :: extern_program
      call select_program(extern_program)
-@@ -338,6 +354,8 @@ module qm2_extern_module
+@@ -338,6 +377,8 @@ module qm2_extern_module
  #endif
       case('reaxff')
         call reaxff_puremd_finalize()
@@ -203,7 +231,7 @@ new file mode 100644
 index 00000000..24ec9d4b
 --- /dev/null
 +++ b/AmberTools/src/sander/qm2_extern_qmhub_module.F90
-@@ -0,0 +1,600 @@
+@@ -0,0 +1,602 @@
 +#include "../include/dprec.fh"
 +module qm2_extern_qmhub_module
 +! ----------------------------------------------------------------
@@ -534,6 +562,7 @@ index 00000000..24ec9d4b
 +       if ( ntb > 0 ) then
 +          write(iunit) (ucell(i,:), i=1,3)
 +       end if
++       flush(iunit)
 +    end if
 +
 +    if ( qmhub_nml%comm == 0 ) then
@@ -626,6 +655,7 @@ index 00000000..24ec9d4b
 +       else
 +          write(iunit) (qmcoords(i,:), i=1,3)
 +       end if
++       flush(iunit)
 +    end if
 +
 +    call debug_exit_function( 'write_inpfile', module_name, qmhub_nml%debug )
