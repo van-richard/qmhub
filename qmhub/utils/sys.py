@@ -66,7 +66,6 @@ def get_nthreads():
 
 def get_nproc():
     """Get the number of processes for QM calculation."""
-    # Backward compatibility: legacy callers use get_nproc() for both process
-    # resources and thread-like work such as PME and Torch. Keep thread/allocation
-    # fallbacks here even though ORCA consumes this as a process count.
+    # Process-oriented backends such as ORCA should use scheduler task counts.
+    # Thread variables remain only as a fallback for non-scheduler launches.
     return _get_first_positive_int_env(_PROCESS_ENV_VARS + _THREAD_ENV_VARS) or 1

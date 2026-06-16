@@ -15,6 +15,7 @@ class QMBase(object):
 
     OUTPUT = None
     default_options = None
+    nproc_getter = staticmethod(get_nproc)
 
     def __init__(
         self,
@@ -47,7 +48,7 @@ class QMBase(object):
             self.mult = 1
 
         self.cwd = cwd or os.getcwd()
-        self.nproc = get_nproc()
+        self.nproc = self.nproc_getter()
         self.cmdline = self.gen_cmdline()
 
         self.qm_element_symbols = DependArray(

@@ -12,6 +12,7 @@ class QChem(QMBase):
 
     OUTPUT = None
     default_options = default_options
+    nproc_getter = staticmethod(get_nthreads)
     # Q-Chem's MM ESP/field scratch filenames vary by version/build.
     # Prefer known binary pairs over version sniffing.
     _MM_ESP_BINARY_OUTPUTS = (
@@ -70,8 +71,8 @@ class QChem(QMBase):
 
     def _get_qchem_nthreads(self):
         # Q-Chem -nt is an OpenMP thread count. Do not fall back to scheduler
-        # task counts from QMBase.nproc, which are process counts for MPI codes.
-        return get_nthreads()
+        # task counts; Amber/Sander launches can export MPI task counts too.
+        return self.nproc
 
     def _is_cray_openmp_environment(self):
         if os.environ.get("PE_ENV", "").upper() == "CRAY":

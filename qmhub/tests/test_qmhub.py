@@ -158,6 +158,22 @@ def _write_bin_exchange(path):
         np.zeros((3, 3), dtype="f8").tofile(f)
 
 
+def _repo_root():
+    return Path(__file__).resolve().parents[2]
+
+
+def _at26_patch_paths():
+    patch_dir = _repo_root().joinpath("patches")
+    return [
+        patch_dir.joinpath("qmhub_at26.patch"),
+        patch_dir.joinpath("qmhub_at26_gnu.patch"),
+    ]
+
+
+def _stream_f8_bytes(*arrays):
+    return b"".join(np.asarray(array, dtype="f8").tobytes() for array in arrays)
+
+
 def test_qmhub_imported():
     """Sample test, will always pass so long as import statement worked"""
     assert "qmhub" in sys.modules
@@ -384,6 +400,29 @@ def test_get_nproc_uses_slurm_cpus_per_task_legacy_fallback(monkeypatch):
     assert get_nproc() == 8
 
 
+def test_qchem_nproc_uses_openmp_threads_with_scheduler_tasks(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+
+    qchem = _make_qchem(tmp_path)
+
+    assert qchem.nproc == 4
+    assert "QCTHREADS=4 OMP_NUM_THREADS=4 qchem -nt 4" in qchem.cmdline
+
+
+def test_qchem_nproc_prefers_qcthreads_with_scheduler_tasks(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    monkeypatch.setenv("QCTHREADS", "8")
+
+    qchem = _make_qchem(tmp_path)
+
+    assert qchem.nproc == 8
+    assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
+
+
 def test_get_nthreads_ignores_scheduler_process_counts(monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("NCPUS", "16")
@@ -413,6 +452,7 @@ def test_amber_mdout_scanner_rejects_sander_bomb():
 def test_orca_uses_scheduler_process_count(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
     monkeypatch.setenv("SLURM_NTASKS", "64")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
 
     orca = _make_orca(tmp_path)
     orca.gen_input()
@@ -504,6 +544,141 @@ def test_fifo_round_trip_writes_energy_and_forces(tmp_path):
     assert not reader.is_alive()
     assert np.isclose(output["energy"], energy)
     assert np.allclose(output["forces"], forces)
+
+
+def test_at26_patch_variants_match_current_fifo_cell_write():
+    for patch in _at26_patch_paths():
+        text = patch.read_text()
+        assert text.count("write(iunit) (ucell(i,:), i=1,3)") == 2
+        assert text.count("write(iunit) ucell(:,i)") == 1
+        assert text.count("write(iunit,'(3(e21.15,1x))') ucell(:,i)") == 1
+
+
+def test_at26_patch_variants_detect_qmhub_extern_namelist():
+    for patch in _at26_patch_paths():
+        text = patch.read_text()
+        assert "! True when qm_theory='EXTERN' is paired with a &qmhub namelist." in text
+        assert "logical :: qmhub_extern" in text
+        assert "call mpi_bcast(self%qmhub_extern,         1, mpi_logical" in text
+        assert "write(6,'(a,l)')     'qmhub_extern                = ', self%qmhub_extern" in text
+        assert "qmhub_extern = .false." in text
+        assert "call nmlsrc('qmhub',5,ifind)" in text
+        assert text.count("rewind 5") >= 2
+        assert "qmmm_nml%qmhub_extern = qmmm_nml%qmtheory%EXTERN .and. qmhub_extern" in text
+        assert "noqmcutoff = qmmm_nml%qmhub_extern" in text
+
+
+def test_at26_patch_variants_restore_at23_arithmetic_qm_center():
+    for patch in _at26_patch_paths():
+        text = patch.read_text()
+        assert "! The modification below uses the arithmetic QM center," in text
+        assert "! matching AmberTools23 pair-list imaging." in text
+        assert "+  use constants, only : zero, one, half, two" in text
+        assert "+  xtmp = xtmp * one_nquant" in text
+        assert "+  ytmp = ytmp * one_nquant" in text
+        assert "+  ztmp = ztmp * one_nquant" in text
+        assert "+  frac(1) = atan2" not in text
+        assert "+  frac(2) = atan2" not in text
+        assert "+  frac(3) = atan2" not in text
+
+
+def test_fifo_coordinate_packets_match_at23_and_at26_forms_byte_for_byte():
+    qmcoords = np.array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+        [5.0, 6.0],
+    ])
+    clcoords = np.array([
+        [10.0, 11.0, 12.0],
+        [20.0, 21.0, 22.0],
+        [30.0, 31.0, 32.0],
+        [0.1, 0.2, 0.3],
+    ])
+
+    at23_loop_packet = _stream_f8_bytes(
+        qmcoords[0, :], clcoords[0, :],
+        qmcoords[1, :], clcoords[1, :],
+        qmcoords[2, :], clcoords[2, :],
+    )
+    at26_implied_do_packet = _stream_f8_bytes(
+        np.concatenate([
+            qmcoords[0, :], clcoords[0, :],
+            qmcoords[1, :], clcoords[1, :],
+            qmcoords[2, :], clcoords[2, :],
+        ])
+    )
+
+    assert at26_implied_do_packet == at23_loop_packet
+    assert np.allclose(
+        np.frombuffer(at26_implied_do_packet, dtype="f8"),
+        [
+            1.0, 2.0, 10.0, 11.0, 12.0,
+            3.0, 4.0, 20.0, 21.0, 22.0,
+            5.0, 6.0, 30.0, 31.0, 32.0,
+        ],
+    )
+
+
+def test_fifo_cell_packets_match_at23_and_at26_forms_byte_for_byte():
+    ucell = np.array([
+        [10.0, 1.0, 2.0],
+        [3.0, 20.0, 4.0],
+        [5.0, 6.0, 30.0],
+    ])
+
+    at23_packet = _stream_f8_bytes(ucell[0, :], ucell[1, :], ucell[2, :])
+    at26_packet = _stream_f8_bytes(np.concatenate([ucell[0, :], ucell[1, :], ucell[2, :]]))
+    text_binary_packet = _stream_f8_bytes(ucell[:, 0], ucell[:, 1], ucell[:, 2])
+
+    assert at26_packet == at23_packet
+    assert np.allclose(np.frombuffer(at26_packet, dtype="f8"), ucell.reshape(9))
+    assert text_binary_packet != at26_packet
+    assert np.allclose(np.frombuffer(text_binary_packet, dtype="f8"), ucell.T.reshape(9))
+
+
+def test_current_fifo_cell_packet_differs_from_text_binary_for_skewed_cell():
+    # Amber keeps lattice vectors in ucell columns. Text/binary write ucell(:,i),
+    # which QMHub reads as lattice-vector rows; current FIFO writes ucell(i,:).
+    ucell = np.array([
+        [10.0, 1.0, 2.0],
+        [3.0, 20.0, 4.0],
+        [5.0, 6.0, 30.0],
+    ])
+
+    text_binary_packet = np.concatenate([ucell[:, i] for i in range(3)])
+    fifo_packet = np.concatenate([ucell[i, :] for i in range(3)])
+    text_binary_basis = text_binary_packet.reshape(3, 3)
+    fifo_basis = fifo_packet.reshape(3, 3)
+
+    assert np.allclose(text_binary_basis, ucell.T)
+    assert np.allclose(fifo_basis, ucell)
+    assert not np.allclose(fifo_basis, text_binary_basis)
+
+
+def test_pme_uses_openmp_thread_count_when_helpmelib_available(monkeypatch):
+    pme_module = pytest.importorskip("qmhub.electools.pme")
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("SLURM_NTASKS", "64")
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    calls = []
+
+    class DummyPME:
+        def __init__(self, *args):
+            calls.append(args)
+
+        def add_dependant(self, dependant):
+            pass
+
+    monkeypatch.setattr(pme_module, "DependPME", DummyPME)
+
+    pme_module.Ewald(
+        qm_positions=DependArray(np.zeros((3, 1))),
+        positions=DependArray(np.zeros((3, 1))),
+        charges=DependArray(np.ones(1)),
+        cell_basis=DependArray(np.eye(3) * 20.0),
+    )
+
+    assert calls[0][-1] == 4
 
 
 def test_qchem_cmdline_defaults_to_one_thread(tmp_path, monkeypatch):

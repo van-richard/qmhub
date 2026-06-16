@@ -4,11 +4,13 @@ from torchmdnet.extensions import get_neighbor_pairs_kernel
 
 from .qmbase import QMBase
 from ..units import CODATA08_BOHR_TO_A, CODATA08_HARTREE_TO_EV
+from ..utils.sys import get_nthreads
 
 
 class Torch(QMBase):
 
     default_options = {'model': None}
+    nproc_getter = staticmethod(get_nthreads)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
