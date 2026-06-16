@@ -8,14 +8,14 @@ from ..utils.dobject import invalidate_cache
 from ..utils.darray import DependArray
 from ..utils.dlist import DependList
 from ..utils.elements import get_element_symbols
-from ..utils.sys import run_cmdline, get_nproc
+from ..utils.sys import run_cmdline, get_nthreads
 
 
 class QMBase(object):
 
     OUTPUT = None
     default_options = None
-    nproc_getter = staticmethod(get_nproc)
+    nproc_getter = staticmethod(get_nthreads)
 
     def __init__(
         self,

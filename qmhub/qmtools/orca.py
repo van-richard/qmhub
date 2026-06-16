@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 
 from ..units import ORCA_BOHR_TO_A
+from ..utils.sys import get_openmp_threads
 from .templates.orca import get_qm_template, default_options
 from .qmbase import QMBase
 
@@ -10,6 +11,7 @@ class ORCA(QMBase):
 
     OUTPUT = "orca.out"
     default_options = default_options
+    nproc_getter = staticmethod(get_openmp_threads)
 
     def gen_input(self):
         """Generate input file for QM software."""

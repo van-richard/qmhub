@@ -1,21 +1,10 @@
 import os
 import subprocess as sp
 
-# Keep process and thread controls separate. SLURM_NTASKS and PBS_NP are
-# process counts for process-based backends such as ORCA, not Q-Chem OpenMP
-# thread counts.
-_PROCESS_ENV_VARS = (
-    "SLURM_NTASKS",
-    "PBS_NP",
-    "NCPUS",
-)
-# SLURM_CPUS_PER_TASK is the CPU allocation for one scheduler task, so it is a
-# valid fallback for threaded Q-Chem runs after explicit thread variables.
 _THREAD_ENV_VARS = (
     "QCTHREADS",
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
-    "SLURM_CPUS_PER_TASK",
 )
 
 
@@ -64,8 +53,11 @@ def get_nthreads():
     return nthreads
 
 
-def get_nproc():
-    """Get the number of processes for QM calculation."""
-    # Process-oriented backends such as ORCA should use scheduler task counts.
-    # Thread variables remain only as a fallback for non-scheduler launches.
-    return _get_first_positive_int_env(_PROCESS_ENV_VARS + _THREAD_ENV_VARS) or 1
+def get_openmp_threads():
+    """Get the thread count for backends that only honor OMP_NUM_THREADS."""
+    nthreads = _get_positive_int_env("OMP_NUM_THREADS") or 1
+
+    if "OMP_NUM_THREADS" in os.environ and _get_positive_int_env("OMP_NUM_THREADS") is None:
+        os.environ["OMP_NUM_THREADS"] = str(nthreads)
+
+    return nthreads

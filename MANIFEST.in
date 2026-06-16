@@ -1,6 +1,6 @@
 include CODE_OF_CONDUCT.md
 include patches/README.md
-include patches/*.patch
+recursive-include patches *.patch
 
 graft qmhub
 global-exclude *.py[cod] __pycache__ *.so

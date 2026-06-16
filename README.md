@@ -114,9 +114,8 @@ Q-Chem Runtime Notes
 The Q-Chem backend sets `QCSCRATCH` to the QMHub engine working directory and
 runs `qchem -nt ... qchem.inp qchem.out save` there. Q-Chem `-nt` is treated as
 an OpenMP thread count, so QMHub prefers thread-oriented variables in this order:
-`QCTHREADS`, `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, then `SLURM_CPUS_PER_TASK`.
-Scheduler process counts such as `SLURM_NTASKS`, `PBS_NP`, and `NCPUS` are not
-used for Q-Chem `-nt`.
+`QCTHREADS`, `OMP_NUM_THREADS`, then `MKL_NUM_THREADS`. Scheduler variables are
+not used for Q-Chem `-nt`.
 
 For MM electrostatic potential and field output, QMHub reads Q-Chem binary
 scratch files from `save/`. It checks the known pairs `1521.0`/`329.0` and
@@ -130,7 +129,16 @@ Documentation sources are available in the [`docs`](docs) directory. The source
 repository is available on [GitHub](https://github.com/van-richard/qmhub/).
 
 AmberTools source patches for Sander/QMHub support are documented in
-[patches/README.md](patches/README.md).
+[patches/README.md](patches/README.md). The patch tree is organized by
+AmberTools version and compiler family:
+
+```text
+patches/
+|-- at23_gnu/
+|-- at23_intel/
+|-- at26_gnu/
+`-- at26_intel/
+```
 
 External Amber/QMHub smoke tests for patched AmberTools installations live in
 [`devtools/amber-qmhub-tests`](devtools/amber-qmhub-tests). Run them from a

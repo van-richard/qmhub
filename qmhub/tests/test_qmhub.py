@@ -27,7 +27,6 @@ from qmhub.iotools.fifo import IOFifo
 from qmhub.iotools.text import IOText
 from qmhub.utils.darray import DependArray
 from qmhub.utils.sys import get_nthreads
-from qmhub.utils.sys import get_nproc
 from qmhub.qmtools.orca import ORCA
 from qmhub.qmtools.qchem import QChem
 
@@ -37,10 +36,6 @@ def _clear_qchem_thread_env(monkeypatch):
         "QCTHREADS",
         "OMP_NUM_THREADS",
         "MKL_NUM_THREADS",
-        "SLURM_CPUS_PER_TASK",
-        "NCPUS",
-        "PBS_NP",
-        "SLURM_NTASKS",
         "PE_ENV",
         "CRAYPE_VERSION",
         "CRAY_CPU_TARGET",
@@ -165,8 +160,8 @@ def _repo_root():
 def _at26_patch_paths():
     patch_dir = _repo_root().joinpath("patches")
     return [
-        patch_dir.joinpath("qmhub_at26.patch"),
-        patch_dir.joinpath("qmhub_at26_gnu.patch"),
+        patch_dir.joinpath("at26_intel", "qmhub_at26.patch"),
+        patch_dir.joinpath("at26_gnu", "qmhub_at26_gnu.patch"),
     ]
 
 
@@ -353,56 +348,8 @@ def test_get_nthreads_uses_mkl_threads_as_fallback(monkeypatch):
     assert get_nthreads() == 6
 
 
-def test_get_nthreads_uses_slurm_cpus_per_task_as_fallback(monkeypatch):
+def test_qchem_nproc_uses_openmp_threads(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
-
-    assert get_nthreads() == 8
-
-
-def test_get_nthreads_prefers_qcthreads_over_slurm_cpus_per_task(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("QCTHREADS", "4")
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
-
-    assert get_nthreads() == 4
-
-
-def test_get_nproc_uses_scheduler_task_counts(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("NCPUS", "16")
-    monkeypatch.setenv("PBS_NP", "32")
-    monkeypatch.setenv("SLURM_NTASKS", "64")
-
-    assert get_nproc() == 64
-
-
-def test_get_nproc_uses_qcthreads_legacy_fallback(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("QCTHREADS", "8")
-    monkeypatch.setenv("OMP_NUM_THREADS", "4")
-    monkeypatch.setenv("MKL_NUM_THREADS", "6")
-
-    assert get_nproc() == 8
-
-
-def test_get_nproc_uses_openmp_threads_legacy_fallback(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("OMP_NUM_THREADS", "8")
-
-    assert get_nproc() == 8
-
-
-def test_get_nproc_uses_slurm_cpus_per_task_legacy_fallback(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
-
-    assert get_nproc() == 8
-
-
-def test_qchem_nproc_uses_openmp_threads_with_scheduler_tasks(tmp_path, monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_NTASKS", "64")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
 
     qchem = _make_qchem(tmp_path)
@@ -411,9 +358,8 @@ def test_qchem_nproc_uses_openmp_threads_with_scheduler_tasks(tmp_path, monkeypa
     assert "QCTHREADS=4 OMP_NUM_THREADS=4 qchem -nt 4" in qchem.cmdline
 
 
-def test_qchem_nproc_prefers_qcthreads_with_scheduler_tasks(tmp_path, monkeypatch):
+def test_qchem_nproc_prefers_qcthreads(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_NTASKS", "64")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
     monkeypatch.setenv("QCTHREADS", "8")
 
@@ -421,15 +367,6 @@ def test_qchem_nproc_prefers_qcthreads_with_scheduler_tasks(tmp_path, monkeypatc
 
     assert qchem.nproc == 8
     assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
-
-
-def test_get_nthreads_ignores_scheduler_process_counts(monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("NCPUS", "16")
-    monkeypatch.setenv("PBS_NP", "32")
-    monkeypatch.setenv("SLURM_NTASKS", "64")
-
-    assert get_nthreads() == 1
 
 
 def test_amber_mdout_scanner_allows_benign_error_estimates():
@@ -449,16 +386,26 @@ def test_amber_mdout_scanner_rejects_sander_bomb():
     assert runner.contains_amber_mdout_failure_marker(" SANDER BOMB in routine foo")
 
 
-def test_orca_uses_scheduler_process_count(tmp_path, monkeypatch):
+def test_orca_uses_thread_count(tmp_path, monkeypatch):
     _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_NTASKS", "64")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
 
     orca = _make_orca(tmp_path)
     orca.gen_input()
 
-    assert orca.nproc == 64
-    assert "%pal nprocs 64 end" in tmp_path.joinpath("orca.inp").read_text()
+    assert orca.nproc == 4
+    assert "%pal nprocs 4 end" in tmp_path.joinpath("orca.inp").read_text()
+
+
+def test_orca_uses_only_openmp_thread_count(tmp_path, monkeypatch):
+    _clear_qchem_thread_env(monkeypatch)
+    monkeypatch.setenv("QCTHREADS", "8")
+
+    orca = _make_orca(tmp_path)
+    orca.gen_input()
+
+    assert orca.nproc == 1
+    assert "%pal nprocs 1 end" in tmp_path.joinpath("orca.inp").read_text()
 
 
 def test_read_fifo_scalar_assigns_to_zero_dimensional_step():
@@ -658,7 +605,6 @@ def test_current_fifo_cell_packet_differs_from_text_binary_for_skewed_cell():
 def test_pme_uses_openmp_thread_count_when_helpmelib_available(monkeypatch):
     pme_module = pytest.importorskip("qmhub.electools.pme")
     _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_NTASKS", "64")
     monkeypatch.setenv("OMP_NUM_THREADS", "4")
     calls = []
 
@@ -716,26 +662,6 @@ def test_qchem_cmdline_prefers_qcthreads_over_openmp(tmp_path, monkeypatch):
     qchem = _make_qchem(tmp_path)
 
     assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
-
-
-def test_qchem_cmdline_uses_slurm_cpus_per_task(tmp_path, monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
-
-    qchem = _make_qchem(tmp_path)
-
-    assert "QCTHREADS=8 OMP_NUM_THREADS=8 qchem -nt 8" in qchem.cmdline
-
-
-def test_qchem_cmdline_ignores_scheduler_process_counts(tmp_path, monkeypatch):
-    _clear_qchem_thread_env(monkeypatch)
-    monkeypatch.setenv("NCPUS", "16")
-    monkeypatch.setenv("PBS_NP", "32")
-    monkeypatch.setenv("SLURM_NTASKS", "64")
-
-    qchem = _make_qchem(tmp_path)
-
-    assert "QCTHREADS=1 OMP_NUM_THREADS=1 qchem -nt 1" in qchem.cmdline
 
 
 def test_qchem_cmdline_adds_cray_openmp_defaults(tmp_path, monkeypatch):
