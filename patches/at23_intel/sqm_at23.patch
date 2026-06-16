@@ -1,0 +1,700 @@
+diff --git a/AmberTools/src/sander/qm_mm.F90 b/AmberTools/src/sander/qm_mm.F90
+index 885fb771..110ba044 100644
+--- a/AmberTools/src/sander/qm_mm.F90
++++ b/AmberTools/src/sander/qm_mm.F90
+@@ -1155,7 +1155,7 @@ subroutine get_qm2_forces(master, calc_mchg_scf, natom, born_radii, &
+         end do
+       end if
+       call qm2_get_qmmm_forces(qmmm_struct%dxyzqm, qmmm_struct%qm_xcrd, &
+-                               qmmm_struct%dxyzcl, scf_mchg)
++                               qmmm_struct%dxyzcl, scf_mchg, qmmm_struct%mm_esp)
+     end if
+   end if
+ 
+diff --git a/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90 b/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
+index 24120a35..c9c021d7 100644
+--- a/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
++++ b/AmberTools/src/sqm/qm2_calc_rij_and_eqns.F90
+@@ -80,6 +80,13 @@ subroutine qm2_calc_rij_and_eqns(coords, nquant_nlink, crdsmm, natom, npairs)
+        qmi_oneBDD1 = qm2_params%multip_2c_elec_params(3,i)**2
+        qmi_oneBDD2 = qm2_params%multip_2c_elec_params(4,i)**2
+        qmi_oneBDD3 = qm2_params%multip_2c_elec_params(5,i)**2
++       ! Reduce QM-MM electrostaics damping if qmmm_int=6 or qmmm_int=7
++       if ( qmmm_nml%qmmm_int==6 .or. qmmm_nml%qmmm_int==7 ) then
++         qmi_oneBDD1 = 0.0D0
++         qmi_oneBDD2 = 0.0D0
++         qmi_oneBDD3 = 0.0D0
++       endif
++
+        qmi_QQ2 = qmi_QQ*qmi_QQ+qmi_oneBDD3
+ 
+        do j=1,npairs
+diff --git a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90 b/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
+index d36bc228..578eab18 100644
+--- a/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
++++ b/AmberTools/src/sqm/qm2_get_qmmm_forces.F90
+@@ -1,7 +1,7 @@
+ ! <compile=optimized>
+ #include "copyright.h"
+ #include "../include/dprec.fh"
+-subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
++subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg,mm_esp)
+ 
+ ! This routine calculates force on the MM atoms due to the QM atoms
+ ! and vice versa. The forces are added to dxyzmm and dxyzqm respectively.
+@@ -41,6 +41,7 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+       _REAL_ , intent(in) :: qm_xcrd(4,qmmm_struct%qm_mm_pairs)
+       _REAL_ , intent(out) :: dxyzmm(*)
+       _REAL_ , intent(in) :: scf_mchg(*)
++      _REAL_ , intent(out) :: mm_esp(4,qmmm_struct%qm_mm_pairs)
+ 
+ !Local
+       _REAL_ psum(45), psum_light
+@@ -115,7 +116,6 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+                     r2InAu=r2*A2_TO_BOHRS2
+                     call GetRotationMatrix(temp(1:3), rotationMatrix, spd_atom)   
+                     call qm2_repp_d(qmmm_struct%qm_atom_type(jj),0,rijInAu,RI,CORE,W,45,1,0) 
+-                    core=core*qm_xcrd(4,j)
+                     call RotateCore(1,0, n_atomic_orb,0,1, 0            &
+                         ,core,rotationMatrix,H)
+                          
+@@ -134,7 +134,6 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+                     r2InAu=r2*A2_TO_BOHRS2                   
+                     call GetRotationMatrix(temp(1:3), rotationMatrix, spd_atom)   
+                     call qm2_repp_d(qmmm_struct%qm_atom_type(jj),0,rijInAu,RI,CORE,W,45,1,0) 
+-                    core=core*qm_xcrd(4,j)
+                     call RotateCore(1,0, n_atomic_orb,0, 1, 0            &
+                         ,core,rotationMatrix,H)
+      
+@@ -148,24 +147,28 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+                 pair_force(k)=(AA-EE)*EV_TO_KCAL*onechange
+               
+               end do  !k
+-  
++ 
++              ! electrostatic potential
++              H=0.0D0
++              temp(1:3)=qm_xcrd(1:3,j)-qm_atom_coord(1:3)
++              r2=sum( temp(1:3) **2)
++              rij=sqrt(r2)
++              rijInAu=rij*A_TO_BOHRS
++              oneOverRij=one/rij
++              r2InAu=r2*A2_TO_BOHRS2
++              call GetRotationMatrix(temp(1:3), rotationMatrix, spd_atom)
++              call qm2_repp_d(qmmm_struct%qm_atom_type(jj),0,rijInAu,RI,CORE,W,45,1,0)
++              call RotateCore(1,0, n_atomic_orb,0,1, 0            &
++                  ,core,rotationMatrix,H)
++ 
++              AA=- core(1,1)*qm_atom_core
++              scale=SIGN(1.0D0,qm_xcrd(4,j))*(AA*exp(-qm2_params%cc_exp_params(jj)*RIJ)+EXP(-ALPH_MM*RIJ))
++              AA=qm2_HELECT(8, psum, H, H)+AA+scale
++
++              ! electrostatic potential at MM atom positions
++              mm_esp(1,j) = mm_esp(1,j) + AA * EV_TO_KCAL
++
+               if ( qmmm_nml%qmmm_switch ) then
+-                 H=0.0D0
+-                 temp(1:3)=qm_xcrd(1:3,j)-qm_atom_coord(1:3)
+-                 r2=sum( temp(1:3) **2) 
+-                 rij=sqrt(r2)
+-                 rijInAu=rij*A_TO_BOHRS
+-                 oneOverRij=one/rij
+-                 r2InAu=r2*A2_TO_BOHRS2
+-                 call GetRotationMatrix(temp(1:3), rotationMatrix, spd_atom)   
+-                 call qm2_repp_d(qmmm_struct%qm_atom_type(jj),0,rijInAu,RI,CORE,W,45,1,0) 
+-                 core=core*qm_xcrd(4,j)
+-                 call RotateCore(1,0, n_atomic_orb,0,1, 0            &
+-                     ,core,rotationMatrix,H)
+-                      
+-                 AA=- core(1,1)*qm_atom_core
+-                 scale=abs(AA*exp(-qm2_params%cc_exp_params(jj)*RIJ)+EXP(-ALPH_MM*RIJ))
+-                 AA=qm2_HELECT(8, psum, H, H)+AA+scale
+ 
+                  ! switch function
+                  if (rij <= qmmm_nml%r_switch_lo) then
+@@ -186,7 +189,7 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+                  pair_force(2) = pair_force(2)*f_switch - temp(2)*AA 
+                  pair_force(3) = pair_force(3)*f_switch - temp(3)*AA 
+ 
+-                 pot_tmp = scf_mchg(jj) * qm_xcrd(4,j) * oneOverRij &
++                 pot_tmp = scf_mchg(jj) * oneOverRij &
+                        & * AU_TO_EV * EV_TO_KCAL * BOHRS_TO_A
+                           !converts AU to kcal
+                  AA=oneOverRij*df_switch*pot_tmp
+@@ -202,6 +205,15 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+                  pair_force(3) = pair_force(3) + temp(3)*AA
+               end if
+   
++              ! electric field
++              mm_esp(2,j) = pair_force(1)
++              mm_esp(3,j) = pair_force(2)
++              mm_esp(4,j) = pair_force(3)
++
++              pair_force(1) = pair_force(1)*qm_xcrd(4,j)
++              pair_force(2) = pair_force(2)*qm_xcrd(4,j)
++              pair_force(3) = pair_force(3)*qm_xcrd(4,j)
++
+               dxyzmm(inner_loop_count) = dxyzmm(inner_loop_count) - pair_force(1)
+               dxyzmm(inner_loop_count+1) = dxyzmm(inner_loop_count+1) - pair_force(2)
+               dxyzmm(inner_loop_count+2) = dxyzmm(inner_loop_count+2) - pair_force(3)
+@@ -226,8 +238,16 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+ !             directions for the interaction of the current QM-MM pair.
+               call qm2_deriv_qmmm_heavy(jj,loop_count, &
+                                   psum,qm_atom_coord,qm_xcrd(1,ii),n_atomic_orb, &
+-                                  pair_force,qm_atom_core,qm_atom_alpa,scf_mchg(jj))
++                                  pair_force,qm_atom_core,qm_atom_alpa,scf_mchg(jj),mm_esp(1,ii))
+   
++              mm_esp(2,ii) = mm_esp(2,ii) + pair_force(1)
++              mm_esp(3,ii) = mm_esp(3,ii) + pair_force(2)
++              mm_esp(4,ii) = mm_esp(4,ii) + pair_force(3)
++
++              pair_force(1) = pair_force(1)*qm_xcrd(4,ii)
++              pair_force(2) = pair_force(2)*qm_xcrd(4,ii)
++              pair_force(3) = pair_force(3)*qm_xcrd(4,ii)
++
+               dxyzmm(inner_loop_count) = dxyzmm(inner_loop_count) - pair_force(1)
+               dxyzmm(inner_loop_count+1) = dxyzmm(inner_loop_count+1) - pair_force(2)
+               dxyzmm(inner_loop_count+2) = dxyzmm(inner_loop_count+2) - pair_force(3)
+@@ -244,7 +264,16 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+            do ii=1,qmmm_struct%qm_mm_pairs
+               loop_count=loop_count+1
+               call qm2_deriv_qmmm_light(jj,ii,loop_count,psum_light,qm_atom_coord,qm_xcrd(1,ii), &
+-                                        pair_force,qm_atom_core,qm_atom_alpa,scf_mchg(jj))
++                                        pair_force,qm_atom_core,qm_atom_alpa,scf_mchg(jj),mm_esp(1,ii))
++
++              mm_esp(2,ii) = mm_esp(2,ii) + pair_force(1)
++              mm_esp(3,ii) = mm_esp(3,ii) + pair_force(2)
++              mm_esp(4,ii) = mm_esp(4,ii) + pair_force(3)
++
++              pair_force(1) = pair_force(1)*qm_xcrd(4,ii)
++              pair_force(2) = pair_force(2)*qm_xcrd(4,ii)
++              pair_force(3) = pair_force(3)*qm_xcrd(4,ii)
++
+               dxyzmm(inner_loop_count:inner_loop_count+2) = &
+                 dxyzmm(inner_loop_count:inner_loop_count+2) - pair_force(1:3)
+               fqm(1:3) = fqm(1:3) + pair_force(1:3)
+@@ -309,7 +338,7 @@ subroutine qm2_get_qmmm_forces(dxyzqm,qm_xcrd,dxyzmm,scf_mchg)
+ end subroutine qm2_get_qmmm_forces
+ 
+ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pair_force, &
+-                         qm_atom_core,alpa,qm_charge)
++                         qm_atom_core,alpa,qm_charge,mm_esp)
+ !For light atoms
+ !See heavy version of routine for comments
+ !  Current Version: Ross Walker (TSRI, 2005)
+@@ -328,6 +357,7 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+       integer, intent(in) :: iqm, loop_count, jpair
+       _REAL_, intent(in) ::  qm_atom_core, alpa
+       _REAL_, intent(in) :: qm_charge
++      _REAL_, intent(out) :: mm_esp
+ 
+ !Local
+       _REAL_ FABX, FABY, FABZ ,FNUCX, FNUCY, FNUCZ
+@@ -391,12 +421,12 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+       ENUC = qmmm_erep*C1
+       ENUC = ENUC + ENUC*SIGN(1.0D0,mm_charge)*(-exp(-RIJ*sf1) + exp(-RIJ*sf2))
+ 
+-      FNUCx = dgx*C1
+-      FNUCy = dgy*C1
+-      FNUCz = dgz*C1
++      FNUCx = dgx*qm_atom_core
++      FNUCy = dgy*qm_atom_core
++      FNUCz = dgz*qm_atom_core
+ 
+-      temp_exp3 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf1)*C1
+-      temp_exp4 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf2)*C1
++      temp_exp3 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf1)*qm_atom_core
++      temp_exp4 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf2)*qm_atom_core
+       corrfx =  dgx*(-temp_exp3+temp_exp4) + vec_qm_mm1*onerij*qmmm_erep &
+                                              *(temp_exp3*sf1-temp_exp4*sf2)
+       corrfy =  dgy*(-temp_exp3+temp_exp4) + vec_qm_mm2*onerij*qmmm_erep &
+@@ -437,14 +467,14 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+ 
+       C1=qm_atom_core*mm_charge
+ 
+-      ENUC = qmmm_erep*C1
+-      scale= ABS((EXP1+EXP2)*ENUC)
++      ENUC = qmmm_erep*qm_atom_core
++      scale= SIGN(1.0D0, mm_charge)*(EXP1+EXP2)*ENUC
+ 
+ !     ****   START OF THE AM1 and PM3 RM1 etc SPECIFIC DERIVATIVE CODE   ***
+ !     ANALYT=-A*(1/(R*R)+2.D0*B*(R-C)/R)*EXP(-B*(R-C)**2)
+ !     ANALYTICAL DERIVATIVES
+ 
+-      if ( qmmm_nml%qmmm_int==2 .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
++      if ( (qmmm_nml%qmmm_int==2 .or. qmmm_nml%qmmm_int==7) .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
+         qmitype = qmmm_struct%qm_atom_type(iqm)
+         ANAM1=zero
+         oner2=oneRIJ*oneRIJ
+@@ -454,10 +484,10 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+           if (temp_real2 < EXPONENTIAL_CUTOFF) then!Skip doing the exponential if it is essentially zero
+             ANAM1=ANAM1+qm2_params%FN1(i,qmitype)* &
+                  (oner2+two*qm2_params%FN2(i,qmitype)*temp_real*oneRIJ)*EXP(-temp_real2)
+-            scale=scale+qm2_params%FN1(i,qmitype)*EXP(-temp_real2)*C1*oneRIJ
++            scale=scale+qm2_params%FN1(i,qmitype)*EXP(-temp_real2)*qm_atom_core*oneRIJ
+           end if
+         end do
+-        ANAM1=-ANAM1*c1*onerij
++        ANAM1=-ANAM1*qm_atom_core*onerij
+         FNUCX=ANAM1*vec_qm_mm1
+         FNUCY=ANAM1*vec_qm_mm2
+         FNUCZ=ANAM1*vec_qm_mm3
+@@ -469,26 +499,32 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+ 
+ !     ****   end OF THE AM1 and PM3 SPECIFIC DERIVATIVE CODE   ***
+ 
+-      EXP3 = (EXP1+EXP2)*abs(c1)
+-      EXP4 = qmmm_erep*onerij*(alpa*EXP1 + ALPH_MM*EXP2)*abs(c1)
+-      FNUCX = FNUCX+dgx*c1-vec_qm_mm1*EXP4+dgX*EXP3
+-      FNUCY = FNUCY+dgy*c1-vec_qm_mm2*EXP4+dgy*EXP3
+-      FNUCZ = FNUCZ+dgz*c1-vec_qm_mm3*EXP4+dgz*EXP3
++      EXP3 = SIGN(1.0D0,mm_charge)*(EXP1+EXP2)*qm_atom_core
++      EXP4 = SIGN(1.0D0,mm_charge)*qmmm_erep*onerij*(alpa*EXP1 + ALPH_MM*EXP2)*qm_atom_core
++      FNUCX = FNUCX+dgx*qm_atom_core-vec_qm_mm1*EXP4+dgX*EXP3
++      FNUCY = FNUCY+dgy*qm_atom_core-vec_qm_mm2*EXP4+dgy*EXP3
++      FNUCZ = FNUCZ+dgz*qm_atom_core-vec_qm_mm3*EXP4+dgz*EXP3
+ 
+     endif  ! qtw - end OF if(qmmm_int == 3) 
+ 
+ ! end --- THE FIRST DERIVATIVE OF NUCLEAR REPULSION TERM
+ 
+ !     MM CORE AFFECTING AO'S ON QM ATOM.
+-      mm_charge=-mm_charge*psum_light
+-      FABX=mm_charge*DGX
+-      FABY=mm_charge*DGY
+-      FABZ=mm_charge*DGZ
++      FABX=-psum_light*DGX
++      FABY=-psum_light*DGY
++      FABZ=-psum_light*DGZ
+ 
+       pair_force(1) = (FABX+FNUCX)*EV_TO_KCAL
+       pair_force(2) = (FABY+FNUCY)*EV_TO_KCAL 
+       pair_force(3) = (FABZ+FNUCZ)*EV_TO_KCAL 
+ 
++      ! electrostatic potential in EV
++      ELEC = ENUC - qmmm_erep*psum_light
++      ! converts EV to kcal
++      ELEC = ELEC * EV_TO_KCAL
++      ! electrostatic potential at MM atom positions
++      mm_esp = mm_esp + ELEC
++
+       if (qmmm_nml%qmmm_switch) then
+          if (rij <= qmmm_nml%r_switch_lo) then
+             f_switch = one
+@@ -501,17 +537,12 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+             df_switch= zero
+          end if
+ 
+-         ! electronic energy in EV
+-         ELEC = -xyz_mm(4)*qmmm_erep*psum_light + ENUC
+-         ! converts EV to kcal
+-         ELEC = ELEC * EV_TO_KCAL
+-
+          AA = ELEC * oneRIJ * df_switch
+          pair_force(1) = pair_force(1)*f_switch + vec_qm_mm1*AA
+          pair_force(2) = pair_force(2)*f_switch + vec_qm_mm2*AA
+          pair_force(3) = pair_force(3)*f_switch + vec_qm_mm3*AA
+ 
+-         pot_tmp = qm_charge*xyz_mm(4)*oneRIJ*AU_TO_EV*EV_TO_KCAL*BOHRS_TO_A
++         pot_tmp = qm_charge*oneRIJ*AU_TO_EV*EV_TO_KCAL*BOHRS_TO_A
+                                              !converts AU to kcal
+          AA=oneRIJ*df_switch*pot_tmp
+ 
+@@ -530,7 +561,7 @@ subroutine qm2_deriv_qmmm_light(iqm,jpair,loop_count,psum_light,xyz_qm,xyz_mm,pa
+ end subroutine qm2_deriv_qmmm_light
+ 
+ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,pair_force, &
+-                         qm_atom_core,alpa,qm_charge)
++                         qm_atom_core,alpa,qm_charge,mm_esp)
+ 
+ !     This routine computes the analytical energy derivatives for the QM-MM
+ !     interaction energy arising from a single QM-MM pair.  The contibutions
+@@ -564,6 +595,7 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+       integer, intent(in) :: iqm, loop_count, n_atomic_orb
+       _REAL_, intent(in) ::  qm_atom_core, alpa
+       _REAL_, intent(in) :: qm_charge
++      _REAL_, intent(out) :: mm_esp
+ 
+ !Local
+       _REAL_ FABX, FABY, FABZ ,FNUCX, FNUCY, FNUCZ
+@@ -936,15 +968,15 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+ 
+       C1=qm_atom_core*mm_charge
+ 
+-      ENUC = qm_mm_e_repul(1)*C1
++      ENUC = qm_mm_e_repul(1)*qm_atom_core
+       ENUC = ENUC + ENUC*SIGN(1.0D0,mm_charge)*(-exp(-RIJ*sf1) + exp(-RIJ*sf2))
+ 
+-      FNUCx = dgx(1)*C1
+-      FNUCy = dgy(1)*C1
+-      FNUCz = dgz(1)*C1
++      FNUCx = dgx(1)*qm_atom_core
++      FNUCy = dgy(1)*qm_atom_core
++      FNUCz = dgz(1)*qm_atom_core
+ 
+-      temp_exp3 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf1)*C1
+-      temp_exp4 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf2)*C1
++      temp_exp3 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf1)*qm_atom_core
++      temp_exp4 = SIGN(1.0D0,mm_charge)*exp(-RIJ*sf2)*qm_atom_core
+       corrfx =  dgx(1)*(-temp_exp3+temp_exp4) + vec_qm_mm1*onerij*qm_mm_e_repul(1) &
+                                                 *(temp_exp3*sf1-temp_exp4*sf2)
+       corrfy =  dgy(1)*(-temp_exp3+temp_exp4) + vec_qm_mm2*onerij*qm_mm_e_repul(1) &
+@@ -960,14 +992,14 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+ 
+       C1=qm_atom_core*mm_charge
+ 
+-      ENUC = qm_mm_e_repul(1)*C1
+-      scale= ABS((EXP1+EXP2)*ENUC)
++      ENUC = qm_mm_e_repul(1)*qm_atom_core
++      scale= SIGN(1.0D0, mm_charge)*(EXP1+EXP2)*ENUC
+ 
+ !     ****   START OF THE AM1 and PM3 SPECIFIC DERIVATIVE CODE   ***
+ !     ANALYT=-A*(1/(R*R)+2.D0*B*(R-C)/R)*EXP(-B*(R-C)**2)
+ !     ANALYTICAL DERIVATIVES
+ 
+-      if ( qmmm_nml%qmmm_int==2 .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
++      if ( (qmmm_nml%qmmm_int==2 .or. qmmm_nml%qmmm_int==7) .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
+         qmitype = qmmm_struct%qm_atom_type(iqm)
+         ANAM1=zero
+         oner2=oneRIJ*oneRIJ
+@@ -977,10 +1009,10 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+           if (temp_real2 < EXPONENTIAL_CUTOFF) then!Skip doing the exponential if it is essentially zero
+             ANAM1=ANAM1+qm2_params%FN1(i,qmitype)* &
+                  (oner2+two*qm2_params%FN2(i,qmitype)*temp_real*oneRIJ)*EXP(-temp_real2)
+-            scale=scale+qm2_params%FN1(i,qmitype)*EXP(-temp_real2)*C1*oneRIJ
++            scale=scale+qm2_params%FN1(i,qmitype)*EXP(-temp_real2)*qm_atom_core*oneRIJ
+           end if
+         end do
+-        ANAM1=-ANAM1*c1*onerij
++        ANAM1=-ANAM1*qm_atom_core*onerij
+         FNUCX=ANAM1*vec_qm_mm1
+         FNUCY=ANAM1*vec_qm_mm2
+         FNUCZ=ANAM1*vec_qm_mm3
+@@ -992,11 +1024,11 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+ 
+ !     ****   end OF THE AM1 and PM3 SPECIFIC DERIVATIVE CODE   ***
+ 
+-      FNUCX = FNUCX+dgX(1)*c1
+-      FNUCY = FNUCY+dgy(1)*c1
+-      FNUCZ = FNUCZ+dgz(1)*c1
+-      EXP3 = (EXP1+EXP2)*abs(c1)
+-      EXP4 = qm_mm_e_repul(1)*onerij*(alpa*EXP1 + ALPH_MM*EXP2)*abs(c1)
++      FNUCX = FNUCX+dgX(1)*qm_atom_core
++      FNUCY = FNUCY+dgy(1)*qm_atom_core
++      FNUCZ = FNUCZ+dgz(1)*qm_atom_core
++      EXP3 = SIGN(1.0D0, mm_charge)*(EXP1+EXP2)*qm_atom_core
++      EXP4 = SIGN(1.0D0, mm_charge)*qm_mm_e_repul(1)*onerij*(alpa*EXP1 + ALPH_MM*EXP2)*qm_atom_core
+       FNUCX = FNUCX-vec_qm_mm1*EXP4
+       FNUCY = FNUCY-vec_qm_mm2*EXP4
+       FNUCZ = FNUCZ-vec_qm_mm3*EXP4
+@@ -1019,9 +1051,9 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+          do N=M,n_atomic_orb
+             MN=M+qm2_params%pascal_tri1(N)
+             ISP=ISP+1
+-            FABX=FABX-BB*mm_charge*PSUM(MN)*DRX(ISP)
+-            FABY=FABY-BB*mm_charge*PSUM(MN)*DRY(ISP)
+-            FABZ=FABZ-BB*mm_charge*PSUM(MN)*DRZ(ISP)                    
++            FABX=FABX-BB*PSUM(MN)*DRX(ISP)
++            FABY=FABY-BB*PSUM(MN)*DRY(ISP)
++            FABZ=FABZ-BB*PSUM(MN)*DRZ(ISP)                    
+             BB=two
+          end do
+       end do
+@@ -1030,6 +1062,29 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+       pair_force(2) = (FABY+FNUCY)*EV_TO_KCAL                                           
+       pair_force(3) = (FABZ+FNUCZ)*EV_TO_KCAL                                           
+ 
++      E1B(1) = -qm_mm_e_repul(1)
++
++      CHGMM_RI2 = -qm_mm_e_repul(2)
++      CHGMM_RI3 = -qm_mm_e_repul(3)
++      CHGMM_RI4 = -qm_mm_e_repul(4)
++
++      E1B(2) = CHGMM_RI2*TX(1)
++      E1B(3) = CHGMM_RI3*TX(1)*TX(1)+CHGMM_RI4*((TY(1)*TY(1))+(TZ(1)*TZ(1)))
++      E1B(4) = CHGMM_RI2*TX(2)
++      E1B(5) = CHGMM_RI3*TX(2)*TX(1)+CHGMM_RI4*((TY(2)*TY(1))+(TZ(2)*TZ(1)))
++      E1B(6) = CHGMM_RI3*TX(2)*TX(2)+CHGMM_RI4*((TY(2)*TY(2))+(TZ(2)*TZ(2)))
++      E1B(7) = CHGMM_RI2*TX(3)
++      E1B(8) = CHGMM_RI3*TX(3)*TX(1)+CHGMM_RI4*TZ(3)*TZ(1)
++      E1B(9) = CHGMM_RI3*TX(3)*TX(2)+CHGMM_RI4*TZ(3)*TZ(2)
++      E1B(10)= CHGMM_RI3*TX(3)*TX(3)+CHGMM_RI4*TZ(3)*TZ(3)
++
++      ! electrostatic potential in EV
++      ELEC = qm2_HELECT(3, psum, E1B, E1B) + ENUC
++      ! converts EV to kcal
++      ELEC = ELEC * EV_TO_KCAL
++      ! electrostatic potential at MM atom positions
++      mm_esp = mm_esp + ELEC
++
+       if (qmmm_nml%qmmm_switch) then
+          if (rij <= qmmm_nml%r_switch_lo) then  ! qtw
+             f_switch = one
+@@ -1042,34 +1097,12 @@ subroutine qm2_deriv_qmmm_heavy(iqm,loop_count,psum,xyz_qm,xyz_mm,n_atomic_orb,p
+             df_switch= zero
+          end if
+ 
+-         ! Calculate energy
+-         E1B(1) = -mm_charge*qm_mm_e_repul(1)
+-
+-         CHGMM_RI2 = -mm_charge*qm_mm_e_repul(2)
+-         CHGMM_RI3 = -mm_charge*qm_mm_e_repul(3)
+-         CHGMM_RI4 = -mm_charge*qm_mm_e_repul(4)
+-
+-         E1B(2) = CHGMM_RI2*TX(1)
+-         E1B(3) = CHGMM_RI3*TX(1)*TX(1)+CHGMM_RI4*((TY(1)*TY(1))+(TZ(1)*TZ(1)))
+-         E1B(4) = CHGMM_RI2*TX(2)
+-         E1B(5) = CHGMM_RI3*TX(2)*TX(1)+CHGMM_RI4*((TY(2)*TY(1))+(TZ(2)*TZ(1)))
+-         E1B(6) = CHGMM_RI3*TX(2)*TX(2)+CHGMM_RI4*((TY(2)*TY(2))+(TZ(2)*TZ(2)))
+-         E1B(7) = CHGMM_RI2*TX(3)
+-         E1B(8) = CHGMM_RI3*TX(3)*TX(1)+CHGMM_RI4*TZ(3)*TZ(1)
+-         E1B(9) = CHGMM_RI3*TX(3)*TX(2)+CHGMM_RI4*TZ(3)*TZ(2)
+-         E1B(10)= CHGMM_RI3*TX(3)*TX(3)+CHGMM_RI4*TZ(3)*TZ(3)
+-
+-         ! electronic energy in EV
+-         ELEC = qm2_HELECT(3, psum, E1B, E1B) + ENUC
+-         ! converts EV to kcal
+-         ELEC = ELEC * EV_TO_KCAL
+-
+          AA = ELEC * oneRIJ * df_switch
+          pair_force(1) = pair_force(1)*f_switch + vec_qm_mm1*AA
+          pair_force(2) = pair_force(2)*f_switch + vec_qm_mm2*AA
+          pair_force(3) = pair_force(3)*f_switch + vec_qm_mm3*AA
+ 
+-         pot_tmp = qm_charge*mm_charge*oneRIJ*AU_TO_EV*EV_TO_KCAL*BOHRS_TO_A
++         pot_tmp = qm_charge*oneRIJ*AU_TO_EV*EV_TO_KCAL*BOHRS_TO_A
+                                              !converts AU to kcal
+          AA=oneRIJ*df_switch*pot_tmp
+ 
+diff --git a/AmberTools/src/sqm/qm2_hcore_qmmm.F90 b/AmberTools/src/sqm/qm2_hcore_qmmm.F90
+index e67dea1b..eae26178 100644
+--- a/AmberTools/src/sqm/qm2_hcore_qmmm.F90
++++ b/AmberTools/src/sqm/qm2_hcore_qmmm.F90
+@@ -257,7 +257,7 @@ SUBROUTINE qm2_rotate_qmmm_light(loop_count,IQM,jpair,xyz_qm,xyz_mm,E1B,ENUC)
+ 
+ !Add in the extra core core repulsion terms if qmmm_int==2. This is equivalent of the
+ !way CHARMM and DYNAMO do QMMM interactions.
+-      if(qmmm_nml%qmmm_int == 2) then
++      if(qmmm_nml%qmmm_int == 2 .or. qmmm_nml%qmmm_int == 7) then
+          if (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) then
+ !          Add gaussians.
+            if (qmmm_nml%qmmmrij_incore) then
+@@ -451,7 +451,7 @@ SUBROUTINE qm2_rotate_qmmm_heavy(loop_count,IQM,xyz_qm,xyz_mm,E1B,ENUC)
+ 
+ !Add in the extra core core repulsion terms if qmmm_int==2. This is equivalent of the
+ !way CHARMM and DYNAMO do QMMM interactions.
+-      if(qmmm_nml%qmmm_int == 2 .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
++      if( (qmmm_nml%qmmm_int == 2 .or. qmmm_nml%qmmm_int == 7) .and. (qmmm_struct%AM1_OR_PM3 .or. qmmm_nml%qmtheory%PM6) ) then
+ !        Add gaussians.
+          if (qmmm_nml%qmmmrij_incore) then
+            rij = qm2_rij_eqns%qmmmrijdata(QMMMRIJ,loop_count)
+diff --git a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90 b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
+index 22249c56..7b8d3574 100644
+--- a/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
++++ b/AmberTools/src/sqm/qm2_read_nm_and_alloc.F90
+@@ -262,7 +262,7 @@ subroutine read_qmmm_nm_and_alloc( igb, ih, ix, x, cut, use_pme, ntb, qmstep, &
+    integer, dimension(:), pointer :: isqm
+ #endif
+    integer :: ier=0
+-   character(len=80) :: parameter_file
++   character(len=256) :: parameter_file
+    logical :: qxd
+ 
+    namelist /qmmm/ qmcut, iqmatoms,qmmask,qmgb,qm_theory, qmtheory, &
+@@ -1189,7 +1189,7 @@ subroutine read_qmmm_nm_and_alloc( igb, ih, ix, x, cut, use_pme, ntb, qmstep, &
+    call int_legal_range('QMMM: (QM Ewald kmaxqy) ',kmaxqy,1,99999999)
+    call int_legal_range('QMMM: (QM Ewald kmaxqz) ',kmaxqz,1,99999999)
+    call int_legal_range('QMMM: (QM Ewald ksqmaxq) ',ksqmaxq,1,kmaxqx*kmaxqy*kmaxqz)
+-   call int_legal_range('QMMM: (QM-MM qmmm_int) ',qmmm_int,0,5)
++   call int_legal_range('QMMM: (QM-MM qmmm_int) ',qmmm_int,0,7)
+    call int_legal_range('QMMM: (QM-MM adjust_q) ',adjust_q,0,2)
+    call int_legal_range('QMMM: (QM-MM diag_routine) ',diag_routine,0,7)
+ #ifdef OPENMP
+diff --git a/AmberTools/src/sqm/qmmm_struct_module.F90 b/AmberTools/src/sqm/qmmm_struct_module.F90
+index baf4839f..7b7b5f52 100644
+--- a/AmberTools/src/sqm/qmmm_struct_module.F90
++++ b/AmberTools/src/sqm/qmmm_struct_module.F90
+@@ -86,6 +86,9 @@ module qmmm_struct_module
+      ! Switched electrostatic potential at each QM atom site due to MM atoms within cutoff
+      _REAL_, dimension(:), pointer :: switched_mmpot => null()
+ 
++     ! Electrostatic potential at MM atoms from QM atoms
++     _REAL_, dimension(:,:), pointer :: mm_esp => null()
++
+      ! Total number of atoms
+      integer :: natom
+      
+@@ -282,7 +285,7 @@ contains
+     nlink  = self%nlink
+ 
+     if ( .not. associated ( self%qm_resp_charges ) ) then
+-       allocate ( self%qm_resp_charges(nquant), stat=ier )
++       allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
+        REQUIRE(ier == 0)
+     end if
+ 
+@@ -347,6 +350,14 @@ contains
+        REQUIRE(ier == 0) !Deallocated in deallocate qmmm
+     end if
+ 
++    if (qmmm_int /= 0) then
++       if ( .not. associated ( self%mm_esp ) ) then
++          ! mm_esp array only actually needs to be qm_mm_pairs long..
++          allocate ( self%mm_esp(4,natom), stat=ier )
++          REQUIRE(ier == 0)
++       end if
++    end if
++
+   end subroutine new_qmmm_struct_type
+ 
+   subroutine extend_integer_array(iarr, new_size)
+@@ -499,6 +510,13 @@ contains
+ 
+     end if
+ 
++    if (qmmm_int /= 0) then
++       if ( associated ( self%mm_esp ) ) then
++          deallocate ( self%mm_esp, stat=ier )
++          REQUIRE(ier == 0)
++       end if
++    end if
++
+   end subroutine delete_qmmm_struct_type
+ 
+ 
+diff --git a/AmberTools/src/sqm/sqm.F90 b/AmberTools/src/sqm/sqm.F90
+index 52f86290..becd6f83 100644
+--- a/AmberTools/src/sqm/sqm.F90
++++ b/AmberTools/src/sqm/sqm.F90
+@@ -31,9 +31,9 @@ program sqm
+    character owrite
+    character(len=MAX_FN_LEN) mdin, mdout 
+    ! external charge
+-   _REAL_ excharge(4000)
+-   integer chgatnum(1000)
+-   character(len=8) chgnam(1000)
++   _REAL_ excharge(80000)
++   integer chgatnum(20000)
++   character(len=8) chgnam(20000)
+    integer ncharge
+ 
+    integer :: igb, maxcyc
+@@ -395,7 +395,7 @@ subroutine sqm_forces(natom, forces)
+    ! Calculation of QM Forces
+    !=============================
+ 
+-   use qmmm_module, only : qmmm_nml, qmmm_struct, qmmm_mpi
++   use qmmm_module, only : qmmm_nml, qmmm_struct, qmmm_mpi, qm2_struct, qmmm_scratch
+    use constants, only : zero
+   
+   implicit none
+@@ -403,7 +403,7 @@ subroutine sqm_forces(natom, forces)
+   integer, intent(in) :: natom
+   _REAL_ , intent(out) :: forces(natom*3)
+ 
+-  integer :: i, j, m
++  integer :: i, j, m, iqmp
+ 
+   qmmm_struct%dxyzqm=zero
+    if (qmmm_nml%qmtheory%DFTB) then
+@@ -422,6 +422,23 @@ subroutine sqm_forces(natom, forces)
+      forces(m+3) = qmmm_struct%dxyzqm(3,i)
+    enddo
+ 
++   !Calculate forces between QM and MM atoms
++   if (qmmm_nml%qmmm_int > 0 .and. (qmmm_nml%qmmm_int /= 5) ) then
++     qmmm_struct%dxyzcl=zero
++     qmmm_struct%mm_esp=zero
++     if (qmmm_nml%qmtheory%DFTB) then
++       iqmp = qmmm_struct%qm_mm_pairs
++       call qm2_dftb_get_qmmm_forces(qmmm_struct%dxyzcl, &
++              qmmm_struct%dxyzqm, qmmm_scratch%qm_real_scratch, &
++              qmmm_scratch%qm_real_scratch(natom+1:natom+iqmp), &
++              qmmm_scratch%qm_real_scratch(2*natom+1:2*natom+iqmp), &
++              qmmm_scratch%qm_real_scratch(3*natom+1:3*natom+iqmp))
++     else
++       call qm2_get_qmmm_forces(qmmm_struct%dxyzqm, qmmm_struct%qm_xcrd, &
++                                qmmm_struct%dxyzcl, qm2_struct%scf_mchg, qmmm_struct%mm_esp)
++     end if
++   end if
++
+    if (qmmm_mpi%commqmmm_master .AND. qmmm_nml%verbosity > 3) then
+       
+       !If verbosity level is greater than 3 we also print the force array on the QM atoms
+@@ -437,6 +454,10 @@ subroutine sqm_forces(natom, forces)
+               qmmm_struct%dxyzqm(2,j)*4.184d0, qmmm_struct%dxyzqm(3,j)*4.184d0, &
+               j=1,qmmm_struct%nquant_nlink)
+       end if
++      if (qmmm_nml%qmmm_int > 0 .and. (qmmm_nml%qmmm_int /= 5)) then
++         write (6,'("QMMM: Electrostatic potential and field on MM atoms from QM Atoms")')
++         write (6,'("QMMM: Atm ",i6,": ",4f20.14)') (j,qmmm_struct%mm_esp(:,j), j=1,qmmm_struct%natom-qmmm_struct%nquant)
++      end if
+    end if
+ 
+ end subroutine sqm_forces
+@@ -518,7 +539,7 @@ subroutine getsqmx(natom,x,atnam,atnum,ncharge,excharge,chgnam,chgatnum)
+    integer i,i3,lun
+    integer natom,atnum(*)
+    character(len=8) atnam(*)
+-   character(len=80) line
++   character(len=100) line
+    ! test-local
+    _REAL_ excharge(*)
+    integer chgatnum(*)
+@@ -536,7 +557,7 @@ subroutine getsqmx(natom,x,atnam,atnum,ncharge,excharge,chgnam,chgatnum)
+    ! check header names
+    ihead=0
+    iend=0
+-   do i=1,9999
++   do i=1,19999
+       read(lun,'(a)',end=10) line
+       if (line(1:1) == "#") then
+          if (line(1:10) == "#EXCHARGES") then
+@@ -573,8 +594,8 @@ subroutine getsqmx(natom,x,atnam,atnum,ncharge,excharge,chgnam,chgatnum)
+    ia=0
+    do i=1,999
+       read(lun,'(a)',end=12) line
+-      if (line(1:80) /= "") then
+-         if (line(1:80) /= "#EXCHARGES") then
++      if (line(1:100) /= "") then
++         if (line(1:100) /= "#EXCHARGES") then
+             ia = ia + 1
+             read(line,*,err=15) atnum(ia),atnam(ia),x(i3+1),x(i3+2),x(i3+3)
+             i3 = i3 + 3
+@@ -591,10 +612,10 @@ subroutine getsqmx(natom,x,atnam,atnum,ncharge,excharge,chgnam,chgatnum)
+    if (mdin_external_charge) then
+       i3=0
+       ic=0
+-      do i=1,999
++      do i=1,19999
+          read(lun,'(a)',end=14) line
+-         if (line(1:80) /= "") then
+-            if (line(1:80) /= "#END") then
++         if (line(1:100) /= "") then
++            if (line(1:100) /= "#END") then
+                ic = ic + 1
+                read(line,*,err=16) chgatnum(ic), chgnam(ic),excharge(i3+1:i3+4) 
+                i3 = i3 + 4
+@@ -606,14 +627,14 @@ subroutine getsqmx(natom,x,atnam,atnum,ncharge,excharge,chgnam,chgatnum)
+    13 ncharge = ic
+ 
+       write(6,'(/80(1H-)/''  EXTERNAL CHARGES FOUND IN INPUT'',/80(1H-))')
+-      write(6,'(2x,"QMMM: External Charge Info")')
+-      write(6,'(2x,"QMMM:",1x,"ATOMIC",3x,"NAME",8x,"X",9x,"Y",9X,"Z",8X,"CHARGE")')
+-
+-      i3=0
+-      do i=1,ncharge
+-         write(6,'(2x,"QMMM:",3x,i2,6x,a6,4f10.4)') chgatnum(i), chgnam(i), excharge(i3+1:i3+4)
+-         i3=i3+4
+-      end do
++      ! write(6,'(2x,"QMMM: External Charge Info")')
++      ! write(6,'(2x,"QMMM:",1x,"ATOMIC",3x,"NAME",8x,"X",9x,"Y",9X,"Z",8X,"CHARGE")')
++
++      ! i3=0
++      ! do i=1,ncharge
++      !    write(6,'(2x,"QMMM:",3x,i2,6x,a6,4f10.4)') chgatnum(i), chgnam(i), excharge(i3+1:i3+4)
++      !    i3=i3+4
++      ! end do
+    end if
+ 
+    return

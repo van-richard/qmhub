@@ -119,7 +119,7 @@ index 7b25357a..1ac95507 100644
  
      use file_io_dat
  #if defined(MPI)
-@@ -63,10 +64,11 @@ module qm2_extern_module
+@@ -63,13 +64,21 @@ module qm2_extern_module
      integer, intent(in) :: nqmatoms             ! Number QM of atoms
      _REAL_,  intent(in) :: qmcoords(3,nqmatoms) ! QM atom coordinates
      integer, intent(in) :: qmtypes(nqmatoms)    ! QM atom types (nuclear charge in au)
@@ -132,7 +132,6 @@ index 7b25357a..1ac95507 100644
      _REAL_, intent(out) :: escf                 ! SCF energy
      _REAL_, intent(out) :: dxyzqm(3,nqmatoms)   ! SCF QM gradient
      _REAL_, intent(out) :: dxyzcl(3,nclatoms)   ! SCF MM gradient
-@@ -81,0 +83,7 @@ module qm2_extern_module
 +#if defined(MPI)
 +    include 'mpif.h'
 +    integer, parameter :: extern_sleep_tag = 26026
@@ -140,6 +139,9 @@ index 7b25357a..1ac95507 100644
 +    integer :: ist(MPI_STATUS_SIZE)
 +    logical :: extern_done
 +#endif
+ 
+     ! List of supported external programs; will search for namelists in this order
+     character(len=20), save :: extern_program
 @@ -88 +97,11 @@ module qm2_extern_module
 -    if ( mytaskid /= 0 ) return
 +    if ( mytaskid /= 0 ) then
@@ -175,13 +177,19 @@ index 7b25357a..1ac95507 100644
      case('fb')
  #ifdef FIREBALL
        call get_fb_forces( do_gradient, nstep, ntpr, id, nqmatoms, qmcoords,&
-@@ -178,0 +204,6 @@ module qm2_extern_module
+@@ -174,6 +199,12 @@ module qm2_extern_module
+            "Please check your input.")
+     end select
+ 
 +#if defined(MPI)
 +    done = 1
 +    do i = 1, numtasks - 1
 +       call mpi_send(done, 1, MPI_INTEGER, i, extern_sleep_tag, commworld, ierr)
 +    end do
 +#endif
+   end subroutine qm2_extern_get_qm_forces
+ 
+ 
 @@ -179,10 +210,10 @@ module qm2_extern_module
      implicit none
  

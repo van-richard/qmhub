@@ -2,99 +2,142 @@
 
 This directory contains source patches for building AmberTools with QMHub
 support and related QM/MM updates. Apply these patches from the Amber source
-root, such as `amber22_src`, `amber24_src`, or `ambertools26_src`, so paths like
+root, such as `amber22_src` or `ambertools26_src`, so paths like
 `AmberTools/src/sander/...` resolve correctly.
+
+Patch files are grouped by AmberTools version and compiler family:
+
+```text
+patches/
+├── at23_gnu/
+├── at23_intel/
+├── at26_gnu/
+└── at26_intel/
+```
 
 ## Compatibility
 
-| AmberTools version | Patch files |
-| --- | --- |
-| AmberTools23 | `qmhub_at23.patch` only |
-| AmberTools26 | `qmhub_at26.patch`, `sqm_at26.patch`, `sinr_at26.patch` |
+| AmberTools version | Compiler family | Patch directory | Apply in this order |
+| --- | --- | --- | --- |
+| AmberTools23 | GNU/gfortran | `at23_gnu/` | `asm_at23.patch`, `qmhub_at23_gnu.patch`, `sqm_at23.patch`, `sinr_at23.patch` |
+| AmberTools23 | Intel/ifort/ifx | `at23_intel/` | `asm_at23.patch`, `qmhub_at23.patch`, `sqm_at23.patch`, `sinr_at23.patch` |
+| AmberTools26 | GNU/gfortran | `at26_gnu/` | `qmhub_at26_gnu.patch`, `sqm_at26.patch`, `sinr_at26.patch` |
+| AmberTools26 | Intel/ifort/ifx | `at26_intel/` | `qmhub_at26.patch`, `sqm_at26.patch`, `sinr_at26.patch` |
 
-Do not mix the AmberTools23 patch with the AmberTools26 patch set.
+Pick exactly one row for your AmberTools version and compiler. Do not mix
+AmberTools23 and AmberTools26 patch sets, and do not mix the GNU and Intel
+QMHub patches.
 
-## AmberTools26 installation
+## GNU vs Intel patch sets
 
-Start in the AmberTools26 source directory. Copy the three AT26 patch files
-there, or reference them by absolute path from this repository, then apply them
-in this order:
+The Intel patch sets are the baseline patches for Intel Fortran builds. The GNU
+patch sets use compiler-specific QMHub patches named `qmhub_at23_gnu.patch` and
+`qmhub_at26_gnu.patch`.
+
+The GNU QMHub patches keep the same QMHub interface behavior, but include
+GNU/gfortran-specific synchronization and I/O adjustments. In MPI Sander runs,
+non-master ranks wait until the master rank finishes the external QMHub call,
+then receive a completion signal before returning. The GNU patches also add
+flushes around binary/FIFO writes so the QMHub driver sees complete records
+promptly with GNU runtime buffering.
+
+Support patches that do not differ by compiler are shared. In this repository,
+some GNU directory entries are symlinks to the matching Intel patch files, such
+as the SQM and SINR patches. Apply them through the selected GNU directory so
+the command sequence stays version/compiler-specific.
+
+## AmberTools23 installation
+
+Start in a clean AmberTools23 source directory. Apply the patches from the
+directory matching your compiler.
+
+For GNU/gfortran builds:
 
 ```bash
-cd ambertools26_src
-patch -p1 < /path/to/qmhub/patches/qmhub_at26.patch
-patch -p1 < /path/to/qmhub/patches/sqm_at26.patch
-patch -p1 < /path/to/qmhub/patches/sinr_at26.patch
+cd amber22_src
+patch -p1 < /path/to/qmhub/patches/at23_gnu/asm_at23.patch
+patch -p1 < /path/to/qmhub/patches/at23_gnu/qmhub_at23_gnu.patch
+patch -p1 < /path/to/qmhub/patches/at23_gnu/sqm_at23.patch
+patch -p1 < /path/to/qmhub/patches/at23_gnu/sinr_at23.patch
+```
+
+For Intel Fortran builds:
+
+```bash
+cd amber22_src
+patch -p1 < /path/to/qmhub/patches/at23_intel/asm_at23.patch
+patch -p1 < /path/to/qmhub/patches/at23_intel/qmhub_at23.patch
+patch -p1 < /path/to/qmhub/patches/at23_intel/sqm_at23.patch
+patch -p1 < /path/to/qmhub/patches/at23_intel/sinr_at23.patch
 ```
 
 After the patches apply cleanly, continue with the normal AmberTools build
 procedure for your platform. Before running patched `sander`, make sure QMHub is
 installed and the `qmhub` command is available on `PATH`.
 
-If you prefer downloading the patches directly:
+## AmberTools26 installation
+
+Start in a clean AmberTools26 source directory. Apply the patches from the
+directory matching your compiler.
+
+For GNU/gfortran builds:
 
 ```bash
 cd ambertools26_src
-curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/qmhub_at26.patch
-curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/sqm_at26.patch
-curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/sinr_at26.patch
-patch -p1 < qmhub_at26.patch
-patch -p1 < sqm_at26.patch
-patch -p1 < sinr_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_gnu/qmhub_at26_gnu.patch
+patch -p1 < /path/to/qmhub/patches/at26_gnu/sqm_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_gnu/sinr_at26.patch
 ```
 
-## AmberTools23 installation
-
-The patch `qmhub_at23.patch` applies only to AmberTools23:
+For Intel Fortran builds:
 
 ```bash
-tar xf AmberTools23.tar.bz2
-cd amber22_src
-curl -OL https://raw.githubusercontent.com/van-richard/qmhub/vibing/patches/qmhub_at23.patch
-patch -p1 < qmhub_at23.patch
+cd ambertools26_src
+patch -p1 < /path/to/qmhub/patches/at26_intel/qmhub_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_intel/sqm_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_intel/sinr_at26.patch
 ```
 
-After the patch applies cleanly, continue with the normal AmberTools build.
+After the patches apply cleanly, continue with the normal AmberTools build
+procedure for your platform. Before running patched `sander`, make sure QMHub is
+installed and the `qmhub` command is available on `PATH`.
 
-## AmberTools26 patch contents
+## Patch contents
 
-`qmhub_at26.patch` adds the Sander QMHub external-QM interface. It adds
-`qm2_extern_qmhub_module.F90`, wires it into the Sander build, routes
+The QMHub patches add the Sander QMHub external-QM interface. They add
+`qm2_extern_qmhub_module.F90`, wire it into the Sander build, route
 `qm_theory='EXTERN'` calculations through QMHub when an `&qmhub` namelist is
-present, passes QM atom data, MM point charges, gradients, and unit-cell data
-between Sander and QMHub, and supports text, binary, and FIFO exchange modes.
-For QMHub EXTERN runs, it also detects the `&qmhub` namelist separately from
-other EXTERN backends, adjusts periodic QM/MM pair-list handling so the full set
-of non-link MM atoms can be sent when the QMHub path disables the usual QM
-cutoff, and uses the arithmetic QM center for periodic pair-list imaging to
-match the AmberTools23 QMHub patch. Amber stores lattice vectors in the columns
-of `ucell`; the AmberTools26 QMHub text/binary exchange writes `ucell(:,i)`,
-matching AmberTools23 and the current QMHub readers' lattice-vector row order.
-Binary exchange writes QM and MM coordinate rows in the packed order consumed by
-the QMHub Sander driver. The patch also preserves link-pair MM charges in
-`qm_resp_charges` and redistributes `adjust_q` charge corrections onto QM and
-link atoms so subsequent QMHub charge handling has the adjusted values.
+present, pass QM atom data, MM point charges, gradients, and unit-cell data
+between Sander and QMHub, and support text, binary, and FIFO exchange modes.
+For QMHub EXTERN runs, they also detect the `&qmhub` namelist separately from
+other EXTERN backends. Amber stores lattice vectors in the columns of `ucell`;
+the QMHub text/binary exchange writes those vectors in the row order consumed by
+the current QMHub Sander readers.
 
-`sqm_at26.patch` updates SQM/QMMM electrostatic handling. It adds storage for
-the electrostatic potential and field at MM atom positions from QM atoms,
-extends the legal `qmmm_int` range from `0..5` to `0..7`, reduces QM-MM
-electrostatic damping for `qmmm_int=6` and `qmmm_int=7`, includes `qmmm_int=7`
-in AM1/PM3/PM6 core-core correction paths, increases external-charge input
-capacity, and reports MM electrostatic potential/field output when QMMM
-verbosity is high enough. It allocates `qm_resp_charges` with link-atom slots so
-link-pair charges can be retained alongside QM atom charges. The reported
-`mm_esp` rows are indexed by SQM external-charge/QM-MM pair-list entry, not
-guaranteed original Amber atom IDs.
+`asm_at23.patch` updates AmberTools23 LAPACK build inputs needed by these
+patched builds.
 
-`sinr_at26.patch` extends Sander SINR thermostat support by adding the
-`ntt=12` middle-scheme path. It updates input validation, SINR initialization,
-integration steps, restart velocity handling, trajectory cleanup, and printed
-thermostat information for `ntt=12`. The patch also routes `ntt=12` through the
-SINR atom-partitioning path used for parallel setup when `ntc=1`.
+`sqm_at23.patch` and `sqm_at26.patch` update SQM/QMMM electrostatic handling.
+They add storage for the electrostatic potential and field at MM atom positions
+from QM atoms, extend the legal `qmmm_int` range from `0..5` to `0..7`, reduce
+QM-MM electrostatic damping for `qmmm_int=6` and `qmmm_int=7`, include
+`qmmm_int=7` in AM1/PM3/PM6 core-core correction paths, increase
+external-charge input capacity, and report MM electrostatic potential/field
+output when QMMM verbosity is high enough. They allocate `qm_resp_charges` with
+link-atom slots so link-pair charges can be retained alongside QM atom charges.
+The reported `mm_esp` rows are indexed by SQM external-charge/QM-MM pair-list
+entry, not guaranteed original Amber atom IDs.
+
+`sinr_at23.patch` and `sinr_at26.patch` extend Sander SINR thermostat support by
+adding the `ntt=12` middle-scheme path. They update input validation, SINR
+initialization, integration steps, restart velocity handling, trajectory
+cleanup, and printed thermostat information for `ntt=12`. They also route
+`ntt=12` through the SINR atom-partitioning path used for parallel setup when
+`ntc=1`.
 
 ## New and relevant options
 
-To use QMHub from patched AmberTools26, set `qm_theory='EXTERN'` in `&qmmm` and
+To use QMHub from patched AmberTools, set `qm_theory='EXTERN'` in `&qmmm` and
 include an `&qmhub` namelist in the same `mdin` file. The presence of `&qmhub`
 selects the QMHub EXTERN path; do not combine it with another EXTERN backend
 namelist in the same input.
@@ -141,16 +184,18 @@ velocity I/O.
 
 ## Troubleshooting
 
-- Apply the AmberTools26 patches in the required order: `qmhub_at26.patch`,
-  then `sqm_at26.patch`, then `sinr_at26.patch`.
+- Pick the patch directory for the exact AmberTools version and compiler family
+  you are building.
+- Apply patches in the order shown in the compatibility table.
 - Run `patch -p1` from the Amber source root, not from inside `AmberTools/`.
 - Confirm `qmhub --help` works in the same environment used to run `sander`.
-- If a patch fails, verify the AmberTools version and start from a clean source
-  tree before retrying.
+- If a patch fails, verify the AmberTools version and compiler selection, then
+  start from a clean source tree before retrying.
 
 ## Possible future additions
 
 - A minimal `qmhub.ini` example for a complete patched-Sander workflow.
-- A tested AmberTools26 build transcript for common compilers and platforms.
+- Tested AmberTools23 and AmberTools26 build transcripts for common compilers
+  and platforms.
 - Small regression inputs for the QMHub EXTERN path, `qmmm_int=6/7`, and
   `ntt=12`.
