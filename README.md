@@ -125,6 +125,9 @@ Q-Chem 5.2-style `5001.0`/`5002.0`; text artifacts such as `esp.dat` or
 Documentation
 -------------
 
+Deployment identities, Q-Chem scratch-file behavior, and the OSU/HPCC validation
+record are documented in [Deployment and Q-Chem validation](docs/deployment_validation.rst).
+
 Documentation sources are available in the [`docs`](docs) directory. The source
 repository is available on [GitHub](https://github.com/van-richard/qmhub/).
 
