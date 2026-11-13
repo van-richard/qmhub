@@ -11,6 +11,7 @@ QM_TO_CLASS_MAP = {
     "pyh4": "PyH4",
     "torch": "Torch",
     "dummy": "Dummy",
+    "mlpui": "MLPUI",
 }
 
 
