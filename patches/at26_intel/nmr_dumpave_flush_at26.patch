@@ -1,0 +1,14 @@
+--- a/AmberTools/src/sander/nmr.F90
++++ b/AmberTools/src/sander/nmr.F90
+@@ -3816,7 +3816,10 @@ subroutine nmrnrg(x,f,rimass,nmrnum,nstep,nmrat, &
+    
+    ! End the dump record
+    if (master .and. idmpav > 0 ) then
+-      if (mod(nstep,idmpav) == 0) write(idumpu,'(a)')
++      if (mod(nstep,idmpav) == 0) then
++         write(idumpu,'(a)')
++         call flush(idumpu)
++      end if
+    end if
+    
+    ! Determine the RMS averages and return

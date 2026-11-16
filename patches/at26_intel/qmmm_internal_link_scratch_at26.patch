@@ -1,0 +1,189 @@
+diff -ruN orig/AmberTools/src/sander/cewmod.F90 fixed/AmberTools/src/sander/cewmod.F90
+--- a/AmberTools/src/sander/cewmod.F90	2026-06-18 18:35:12.751075904 -0400
++++ b/AmberTools/src/sander/cewmod.F90	2026-06-18 18:35:16.377114559 -0400
+@@ -572,7 +572,7 @@
+       if ( associated( qmmm_scratch%qm_real_scratch ) ) then
+          deallocate( qmmm_scratch%qm_real_scratch )
+       end if
+-      allocate( qmmm_scratch%qm_real_scratch(3*natom) )
++      allocate( qmmm_scratch%qm_real_scratch(4*natom) )
+       qmmm_scratch%qm_real_scratch = zero
+ 
+ 
+diff -ruN orig/AmberTools/src/sander/putvalues.F90 fixed/AmberTools/src/sander/putvalues.F90
+--- a/AmberTools/src/sander/putvalues.F90	2026-06-18 18:35:11.520062782 -0400
++++ b/AmberTools/src/sander/putvalues.F90	2026-06-18 18:35:15.475104943 -0400
+@@ -99,16 +99,31 @@
+ !     Deleting previous qmmm memory structures
+       if (pupStep .gt. 1) then
+          ier = 0
+-         deallocate (qmmm_scratch%qm_real_scratch, stat=ier)
+-         REQUIRE(ier == 0)
+-         deallocate ( qmmm_struct%qm_resp_charges,stat=ier)
+-         REQUIRE(ier == 0)
+-         deallocate ( qmmm_struct%iqm_atomic_numbers, stat=ier )
+-         REQUIRE(ier == 0)
+-         deallocate ( qmmm_struct%iqmatoms, stat=ier )
+-         REQUIRE(ier == 0)
+-         deallocate ( qmmm_struct%atom_mask, stat=ier )
+-         REQUIRE(ier == 0)
++         if (associated(qmmm_scratch%qm_real_scratch)) then
++            deallocate (qmmm_scratch%qm_real_scratch, stat=ier)
++            REQUIRE(ier == 0)
++            nullify(qmmm_scratch%qm_real_scratch)
++         end if
++         if (associated(qmmm_struct%qm_resp_charges)) then
++            deallocate ( qmmm_struct%qm_resp_charges,stat=ier)
++            REQUIRE(ier == 0)
++            nullify(qmmm_struct%qm_resp_charges)
++         end if
++         if (associated(qmmm_struct%iqm_atomic_numbers)) then
++            deallocate ( qmmm_struct%iqm_atomic_numbers, stat=ier )
++            REQUIRE(ier == 0)
++            nullify(qmmm_struct%iqm_atomic_numbers)
++         end if
++         if (associated(qmmm_struct%iqmatoms)) then
++            deallocate ( qmmm_struct%iqmatoms, stat=ier )
++            REQUIRE(ier == 0)
++            nullify(qmmm_struct%iqmatoms)
++         end if
++         if (associated(qmmm_struct%atom_mask)) then
++            deallocate ( qmmm_struct%atom_mask, stat=ier )
++            REQUIRE(ier == 0)
++            nullify(qmmm_struct%atom_mask)
++         end if
+       end if
+ 
+ !     Initializing qmm_nml and qmmm_struct structures if these are present. 
+@@ -121,18 +136,18 @@
+       qm2_struct%calc_mchg_scf = .false. ! Compute Mulliken charges? (default: No)
+       qmmm_nml%qmshake         = 0       ! Use SHAKE? (default: No)
+       qmmm_nml%qm_ewald        = 0       ! Use Ewald interpolation for long-range QM-QM electrostatics? (default: No)
+-      allocate ( qmmm_scratch%qm_real_scratch(3*natom),stat=ier)
++      allocate ( qmmm_scratch%qm_real_scratch(4*natom),stat=ier)
+       REQUIRE(ier == 0)
+       allocate ( qmmm_struct%iqm_atomic_numbers(totQM),stat=ier)
+       REQUIRE(ier == 0)
+-      allocate ( qmmm_struct%qm_resp_charges(totQM),stat=ier)
++      allocate ( qmmm_struct%qm_resp_charges(totQM+qmmm_struct%nlink),stat=ier)
+       REQUIRE(ier == 0)
+       allocate ( qmmm_struct%iqmatoms(totQM),stat=ier)
+       REQUIRE(ier == 0)
+       allocate ( qmmm_struct%atom_mask(natom),stat=ier)
+       REQUIRE(ier == 0)
+       qmmm_struct%atom_mask(1:natom)       = .false.
+-      qmmm_struct%qm_resp_charges(1:totQM) = zero
++      qmmm_struct%qm_resp_charges(:) = zero
+    end if
+ 
+    ! From here on, do whether or not the QM zone has changed
+diff -ruN orig/AmberTools/src/sqm/qm_zero_charges.F90 fixed/AmberTools/src/sqm/qm_zero_charges.F90
+--- a/AmberTools/src/sqm/qm_zero_charges.F90	2026-06-18 18:35:10.230049030 -0400
++++ b/AmberTools/src/sqm/qm_zero_charges.F90	2026-06-18 18:35:14.585095455 -0400
+@@ -69,6 +69,7 @@
+ 
+ !Local
+   integer i,y,ier
++  integer :: resp_size
+ 
+   if (qmmm_struct%zero_link_charges_first_call .and. save_charges) then
+ ! Allocate and store the original charges
+@@ -85,6 +86,32 @@
+   ! Do not zero charges for mechanical embedding (qmmm_int = 5)
+   if (qmmm_nml%qmmm_int == 5) return
+ 
++
++  if ( .not. associated(qmmm_struct%qm_resp_charges) ) then
++     call sander_bomb('qm_zero_mm_link_pair_main_chg', &
++          'qmmm_struct%qm_resp_charges is not allocated', &
++          'Cannot store MM-link RESP charges for internal QM/MM.')
++  end if
++
++  resp_size = size(qmmm_struct%qm_resp_charges)
++  if ( resp_size < qmmm_struct%nquant + nlink ) then
++     write(6,'(a,3i10)') 'QMMM: qm_resp_charges size, nquant, nlink = ', &
++          resp_size, qmmm_struct%nquant, nlink
++     call sander_bomb('qm_zero_mm_link_pair_main_chg', &
++          'qmmm_struct%qm_resp_charges is too small for link atoms', &
++          'Expected at least nquant+nlink entries.')
++  end if
++
++  do i = 1, nlink
++     if ( link_pairs(2,i) < 1 .or. link_pairs(2,i) > qmmm_struct%nquant ) then
++        write(6,'(a,3i10)') 'QMMM: bad link index i, link_pairs(2,i), nquant = ', &
++             i, link_pairs(2,i), qmmm_struct%nquant
++        call sander_bomb('qm_zero_mm_link_pair_main_chg', &
++             'Invalid QM-side link atom index', &
++             'link_pairs(2,i) must be within 1:nquant.')
++     end if
++  end do
++
+   if (save_charges) then
+     do i = 1, nlink
+       y = link_pairs(1,i) !The  id of the MM link pair atom
+diff -ruN orig/AmberTools/src/sqm/qmmm_struct_module.F90 fixed/AmberTools/src/sqm/qmmm_struct_module.F90
+--- a/AmberTools/src/sqm/qmmm_struct_module.F90	2026-06-18 18:35:09.038036323 -0400
++++ b/AmberTools/src/sqm/qmmm_struct_module.F90	2026-06-18 18:35:13.655085541 -0400
+@@ -250,6 +250,7 @@
+ 
+   interface extend
+      module procedure extend_integer_array
++     module procedure extend_real_array
+   end interface
+ 
+ contains
+@@ -287,6 +288,9 @@
+     if ( .not. associated ( self%qm_resp_charges ) ) then
+        allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
+        REQUIRE(ier == 0)
++       self%qm_resp_charges = 0.0d0
++    else
++       call extend(self%qm_resp_charges, nquant+nlink)
+     end if
+ 
+     if ( .not. associated ( self%iqmatoms ) ) then
+@@ -397,6 +401,44 @@
+ 
+   end subroutine extend_integer_array
+ 
++
++  subroutine extend_real_array(rarr, new_size)
++
++    ! extend a real array if necessary and pad new entries with zeros
++
++    implicit none
++
++    _REAL_, pointer :: rarr(:)
++    integer, intent(in) :: new_size
++
++    integer :: ier, old_size
++    _REAL_, allocatable :: tmp(:)
++
++    old_size = size (rarr)
++
++    if (old_size < new_size) then
++
++       allocate ( tmp(old_size), stat=ier )
++       REQUIRE(ier == 0)
++
++       tmp(:) = rarr(:)
++
++       deallocate ( rarr, stat=ier )
++       REQUIRE(ier == 0)
++
++       allocate ( rarr(new_size), stat=ier )
++       REQUIRE(ier == 0)
++
++       rarr(1:old_size) = tmp(1:old_size)
++       rarr(old_size+1:new_size) = 0.0d0
++
++       deallocate ( tmp, stat=ier )
++       REQUIRE(ier == 0)
++
++    end if
++
++  end subroutine extend_real_array
++
+   subroutine delete_qmmm_struct_type(self, qmmm_int, idc, qmmm_switch)
+ 
+     implicit none

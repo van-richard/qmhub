@@ -21,8 +21,8 @@ patches/
 | --- | --- | --- | --- |
 | AmberTools23 | GNU/gfortran | `at23_gnu/` | `asm_at23.patch`, `qmhub_at23_gnu.patch`, `sqm_at23.patch`, `sinr_at23.patch` |
 | AmberTools23 | Intel/ifort/ifx | `at23_intel/` | `asm_at23.patch`, `qmhub_at23.patch`, `sqm_at23.patch`, `sinr_at23.patch` |
-| AmberTools26 | GNU/gfortran | `at26_gnu/` | `qmhub_at26_gnu.patch`, `sqm_at26.patch`, `sinr_at26.patch` |
-| AmberTools26 | Intel/ifort/ifx | `at26_intel/` | `qmhub_at26.patch`, `sqm_at26.patch`, `sinr_at26.patch` |
+| AmberTools26 | GNU/gfortran | `at26_gnu/` | `qmhub_at26_gnu.patch`, `sqm_at26.patch`, `sinr_at26.patch`, `nmr_dumpave_flush_at26.patch` |
+| AmberTools26 | Intel/ifort/ifx | `at26_intel/` | `qmhub_at26.patch`, `sqm_at26.patch`, `sinr_at26.patch`, `nmr_dumpave_flush_at26.patch` |
 
 Pick exactly one row for your AmberTools version and compiler. Do not mix
 AmberTools23 and AmberTools26 patch sets, and do not mix the GNU and Intel
@@ -87,6 +87,7 @@ cd ambertools26_src
 patch -p1 < /path/to/qmhub/patches/at26_gnu/qmhub_at26_gnu.patch
 patch -p1 < /path/to/qmhub/patches/at26_gnu/sqm_at26.patch
 patch -p1 < /path/to/qmhub/patches/at26_gnu/sinr_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_gnu/nmr_dumpave_flush_at26.patch
 ```
 
 For Intel Fortran builds:
@@ -96,11 +97,49 @@ cd ambertools26_src
 patch -p1 < /path/to/qmhub/patches/at26_intel/qmhub_at26.patch
 patch -p1 < /path/to/qmhub/patches/at26_intel/sqm_at26.patch
 patch -p1 < /path/to/qmhub/patches/at26_intel/sinr_at26.patch
+patch -p1 < /path/to/qmhub/patches/at26_intel/nmr_dumpave_flush_at26.patch
 ```
 
 After the patches apply cleanly, continue with the normal AmberTools build
 procedure for your platform. Before running patched `sander`, make sure QMHub is
 installed and the `qmhub` command is available on `PATH`.
+
+### Optional AT26 memory/link patch
+
+`qmmm_internal_link_scratch_at26.patch` is optional and pending validation
+against real AmberTools26 sources and calculations. To opt in, insert the
+command for your selected compiler after both the QMHub and SQM patches and
+before the SINR and NMR flush patches in the AT26 sequence above.
+
+For GNU/gfortran:
+
+```bash
+patch -p1 < /path/to/qmhub/patches/at26_gnu/qmmm_internal_link_scratch_at26.patch
+```
+
+For Intel/ifort/ifx:
+
+```bash
+patch -p1 < /path/to/qmhub/patches/at26_intel/qmmm_internal_link_scratch_at26.patch
+```
+
+The added bounds check assumes `link_pairs(2,i)` is a QM-local index within
+`1:nquant`; whether AmberTools26 uses local or global atom indices here remains
+unverified. When growing `qm_resp_charges`, the patch preserves existing entries
+and initializes new slots to zero. It may change results in runs that previously
+accessed invalid or uninitialized memory, and its checks may stop previously
+accepted inputs.
+
+Before production use, manually validate each compiler's serial and MPI builds:
+
+- Clean patch application and builds with GNU and Intel compilers, for both
+  `sander` and `sander.MPI`.
+- Linked and link-free internal QM/MM cases, including QM masks whose global
+  Amber atom IDs exceed `nquant`, to confirm the index assumption.
+- Repeated QM-region updates, including changes in link count, and internal
+  PM3 `qmmm_int=6/7` and DFTB cases to exercise RESP growth and scratch storage.
+- Energies and gradients against known working cases, with bounds checking
+  enabled where available.
 
 ## Patch contents
 
@@ -128,12 +167,26 @@ link-atom slots so link-pair charges can be retained alongside QM atom charges.
 The reported `mm_esp` rows are indexed by SQM external-charge/QM-MM pair-list
 entry, not guaranteed original Amber atom IDs.
 
+The optional `qmmm_internal_link_scratch_at26.patch` addresses AmberTools26
+internal semiempirical QM/MM memory handling after the QMHub and SQM patches are
+applied. It extends `qm_resp_charges` when link atoms are discovered after the
+first QMMM structure allocation, adds explicit bounds checks around MM-link
+charge storage, guards and nullifies QM/MM pointer deallocations in the QMHub
+update path, and increases
+`qm_real_scratch` allocations from `3*natom` to `4*natom` for the patched
+electrostatic field/force scratch layout.
+
 `sinr_at23.patch` and `sinr_at26.patch` extend Sander SINR thermostat support by
 adding the `ntt=12` middle-scheme path. They update input validation, SINR
 initialization, integration steps, restart velocity handling, trajectory
 cleanup, and printed thermostat information for `ntt=12`. They also route
 `ntt=12` through the SINR atom-partitioning path used for parallel setup when
 `ntc=1`.
+
+`nmr_dumpave_flush_at26.patch` flushes the AmberTools26 NMR `DUMPAVE` unit after
+each completed dump record. This makes restraint/CV files visible while Sander
+is still running on systems with buffered Fortran I/O. It does not change
+restraint evaluation, CV values, QM/MM energies, or forces.
 
 ## New and relevant options
 
