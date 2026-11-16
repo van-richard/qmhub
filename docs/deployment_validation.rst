@@ -15,7 +15,7 @@ NumPy 2.4.6 and SciPy 1.17.1; QMHub and helPME were not installed into that new
 prefix, and it is not a validated QMHub installation.
 
 Branch consolidation audit: 16 November 2026
--------------------------------------------
+--------------------------------------------
 
 The deployment results below remain the **12 November** record. The later
 ``vibe-pui`` branch combines the following GitHub histories without replacing
