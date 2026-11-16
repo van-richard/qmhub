@@ -29,12 +29,13 @@ conda create --prefix ~/envs/qmhub-py310 python=3.10.15 numpy=2.2.6 scipy=1.15.3
 conda activate ~/envs/qmhub-py310
 ```
 
-Clone QMHub under `~/github` and install from the source checkout:
+Clone the combined `vibe-pui` development branch under `~/github` and install
+from the source checkout:
 
 ```bash
 mkdir -p ~/github
 cd ~/github
-git clone https://github.com/van-richard/qmhub.git
+git clone --branch vibe-pui https://github.com/van-richard/qmhub.git
 cd ~/github/qmhub
 python -m pip install .
 ```
@@ -90,6 +91,34 @@ pbc = true
 [engine]
 qm = qchem
 ```
+
+MLPUI Engine
+------------
+
+The optional [MLPUI](https://github.com/MoriyaSuwako2524/MLPUI) backend lets the
+same QMHub exchange workflow use a machine-learning potential. Select it in
+place of the engine section above and provide a compatible potential spec:
+
+```ini
+[engine]
+high = mlpui
+
+[high]
+spec = /absolute/path/to/potential_spec.json
+threads = 8
+```
+
+MLPUI and its model dependencies must be installed separately in the Python
+environment running QMHub. They are imported only when `mlpui` is selected;
+other engines do not require them. Use an absolute spec path because relative
+paths resolve from the process working directory, independently of `--cwd`.
+Checkpoint paths inside the spec resolve relative to the spec file.
+
+The external [MLPUI adapter](https://github.com/MoriyaSuwako2524/MLPUI/blob/main/mlpui/potentials/qmhub.py)
+defines the supported potential terms, charge/spin constraints, and energy,
+gradient, and embedding-potential units. Its dependency stack and trained
+models need separate runtime validation; QMHub's mocked integration tests do
+not validate model accuracy or production FIFO sampling.
 
 Python API Example
 ------------------

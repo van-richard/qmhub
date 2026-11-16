@@ -446,6 +446,10 @@ def test_text_and_binary_outputs_match_upstream_layout(tmp_path):
     assert np.allclose(bin_output[1:].reshape(4, 3).T, forces)
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo"),
+    reason="Named FIFO round trips require POSIX os.mkfifo.",
+)
 def test_fifo_round_trip_writes_energy_and_forces(tmp_path):
     input_fifo = tmp_path.joinpath("exchange.fifo")
     output_fifo = input_fifo.with_suffix(".out")

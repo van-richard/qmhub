@@ -14,6 +14,65 @@ HPCC. A local conda prefix had already been created with Python 3.12.13,
 NumPy 2.4.6 and SciPy 1.17.1; QMHub and helPME were not installed into that new
 prefix, and it is not a validated QMHub installation.
 
+Branch consolidation audit: 16 November 2026
+-------------------------------------------
+
+The deployment results below remain the **12 November** record. The later
+``vibe-pui`` branch combines the following GitHub histories without replacing
+the tested ``vibing`` runtime:
+
+.. list-table:: Source identities before consolidation
+   :header-rows: 1
+   :widths: 20 20 60
+
+   * - Branch
+     - Commit
+     - Contents
+   * - ``master``
+     - ``e04c276``
+     - Default branch; unchanged by consolidation.
+   * - ``vibing``
+     - ``82c6d46``
+     - Runtime baseline ``f35aa81`` plus the deployment documentation.
+   * - ``vibing-fifo``
+     - ``6838e4f``
+     - Merged MLPUI PR #1; adds engine registration and an optional adapter.
+
+``vibe-pui`` preserves both development histories. The existing ``master``
+and ``vibing`` branches are retained at their original commits. Local
+``master`` also has commit ``46c7303``, which is already in ``vibing``.
+Commit identities are authoritative for source comparisons; ignored generated
+version files and checkout-local packaging metadata can be stale.
+
+On lynnx, the existing ``qmhub`` environment at
+``/home/van/Programs/miniforge3/envs/qmhub`` reports package version
+``1.0.0+207.g88eab36.dirty`` with Python 3.12.13, NumPy 2.4.6, and SciPy 1.17.1.
+Its 47 runtime Python source files match commit ``88eab36`` exactly; six differ
+from the newer deployed baseline ``f35aa81``. The local ``qmhub2`` environment
+exists but has no QMHub installation. MLPUI is absent from both environments.
+No environments were updated. OSU and HPCC were not freshly inspected for this
+consolidation; their identities below are historical evidence.
+
+The consolidation includes local AmberTools26 NMR output-flush and internal
+memory/link-atom patches. The memory patch is optional and awaits validation
+against full Amber source, particularly the interpretation of
+``link_pairs(2,i)`` for QM regions with high global atom numbers. It can affect
+results from previously invalid memory accesses. See ``patches/README.md`` for
+prerequisites and manual validation; no Amber build or calculation was run.
+
+Two pre-existing behaviors are preserved for separate review: ORCA selects
+``%pal nprocs`` from ``OMP_NUM_THREADS`` rather than scheduler process counts,
+and FIFO versus text/binary unit-cell packets have different orientations for
+skewed cells. Orthogonal-cell behavior does not establish triclinic equivalence.
+Neither numerical convention was changed during consolidation.
+
+The local lightweight suite passes **50 tests**, with one opt-in source-tree
+helPME-extension check skipped. It covers optional MLPUI loading with a mocked
+factory, existing parser/FIFO regressions, and dependency-aware arrays. It
+does not execute MLPUI models or reproduce the PR author's reported Amber FIFO
+sampling. Real-model numerical checks and GNU/Intel serial/MPI Amber validation
+remain separate work.
+
 How the components fit together
 -------------------------------
 
