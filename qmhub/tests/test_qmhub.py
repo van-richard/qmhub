@@ -728,7 +728,8 @@ def test_qchem_energy_reports_missing_binary(tmp_path):
 
     message = str(error.value)
     assert "Q-Chem energy binary output was not produced" in message
-    assert "save/99.0" in message
+    # Diagnostics format paths with the platform's native separators.
+    assert str(tmp_path.joinpath("save", "99.0")) in message
 
 
 def test_qchem_energy_reports_incomplete_binary_without_removing(tmp_path):
@@ -860,6 +861,6 @@ def test_qchem_mm_esp_reports_missing_sources(tmp_path):
 
     message = str(error.value)
     assert "Could not find valid Q-Chem MM ESP output." in message
-    assert "save/1521.0" in message
-    assert "save/5001.0" in message
+    assert str(save_path.joinpath("1521.0")) in message
+    assert str(save_path.joinpath("5001.0")) in message
     assert "123.0" in message

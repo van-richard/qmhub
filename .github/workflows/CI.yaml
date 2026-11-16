@@ -21,6 +21,8 @@ jobs:
     name: Test on ${{ matrix.os }}, Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # Collect all platform results when one compatibility check fails.
+      fail-fast: false
       matrix:
         os: [macOS-latest, ubuntu-latest, windows-latest]
         python-version: ["3.10.15", "3.12.13"]
