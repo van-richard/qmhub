@@ -24,7 +24,8 @@ jobs:
       # Collect all platform results when one compatibility check fails.
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # Pin the macOS image and architecture for reproducible compatibility checks.
+        os: [macos-15-intel, ubuntu-latest, windows-latest]
         python-version: ["3.10.15", "3.12.13"]
 
     steps:
