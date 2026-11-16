@@ -24,7 +24,7 @@ jobs:
       # Collect all platform results when one compatibility check fails.
       fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         python-version: ["3.10.15", "3.12.13"]
 
     steps:
