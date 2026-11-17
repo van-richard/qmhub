@@ -13,6 +13,7 @@ Welcome to QMHub's documentation!
    getting_started
    api
    deployment_validation
+   recentering_gradient_fix
 
 
 

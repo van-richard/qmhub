@@ -7,6 +7,7 @@ from .simulation import Simulation
 from .model import Model
 from .engine import Engine
 from .iotools import IO
+from .utils.darray import DependArray
 
 
 class QMMM(object):
@@ -71,4 +72,13 @@ class QMMM(object):
         group_obj.add_engine(engine, name=name, cwd=cwd, options=options)
 
     def return_results(self, output=None):
-        self.io.return_results(self.simulation.energy, self.simulation.energy_gradient, output)
+        # All supported readers recenter coordinates. Apply that transformation's
+        # derivative once, after MD/MTS aggregation, without changing raw results.
+        # Keep it lazy: FIFO reads its first geometry and later frames inside
+        # return_results(), invalidating the simulation gradient on each update.
+        input_gradient = DependArray(
+            name="input_energy_gradient",
+            func=self.system.map_energy_gradient,
+            dependencies=[self.simulation.energy_gradient],
+        )
+        self.io.return_results(self.simulation.energy, input_gradient, output)

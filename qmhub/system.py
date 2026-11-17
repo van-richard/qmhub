@@ -31,3 +31,20 @@ class System(object):
         self.atoms.positions -= self.qm.atoms.positions.mean(axis=1, keepdims=True)
         if not np.all(self.cell_basis == 0):
             self.atoms.positions -= np.around(self.atoms.positions / np.diagonal(self.cell_basis)[:, np.newaxis]) * np.diagonal(self.cell_basis)[:, np.newaxis]
+
+    def map_energy_gradient(self, gradient):
+        """Map a wrapped-coordinate gradient back to the input coordinates.
+
+        Call this only for an energy evaluated after ``wrap_positions()``.
+        Away from periodic image changes, moving one QM atom translates every
+        wrapped coordinate by minus that displacement divided by N_QM. The
+        resulting chain-rule term belongs to the QM columns only, including
+        when the current centroid happens to be zero or the cell is nonperiodic.
+        Direct Model callers that did not recenter must keep their raw gradient.
+        """
+        mapped = np.array(gradient, copy=True)
+        n_qm_atoms = self.qm.atoms.positions.shape[1]
+        # Copy before correcting so cached engine/model gradients stay intact.
+        centroid_gradient = mapped.sum(axis=1, keepdims=True) / n_qm_atoms
+        mapped[:, self.qm_index] -= centroid_gradient
+        return mapped
