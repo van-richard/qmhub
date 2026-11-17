@@ -36,6 +36,25 @@ This directory contains OS agnostic helper scripts which don't fall in any of th
     NumPy/Torch interoperability, native PME, the real analytic MLPUI adapter,
     and CUDA calculations without external QM jobs. QMHub Git identity is
     verified separately against its build manifest.
+  * `check_qmmm_stack.py`: Inspect the selected Python/QMHub, Sander, and
+    Q-Chem installation without starting a licensed calculation. Run it after
+    loading the intended modules, using the environment's Python:
+
+    ```bash
+    python -I devtools/scripts/check_qmmm_stack.py
+    python -I devtools/scripts/check_qmmm_stack.py --json
+    ```
+
+    The checker reports interpreter/package/launcher locations, Amber and
+    Q-Chem settings, thread controls, and Linux native linkage. It flags mixed
+    installations and missing runtime libraries; missing optional `sander.MPI`
+    is a warning. `--amber-home PREFIX` selects the intended Sander installation
+    for comparison, while stale shell `AMBERHOME` settings still fail. Linux
+    linkage inspection uses `ldd` only on the selected installation's resolved
+    ELF executables; other platforms skip this check. The tool does not import
+    QMHub, modify environment settings, load modules, or launch Amber/Q-Chem.
+    It exits with status 0 when required checks pass and 1 when they fail.
+    It is never called automatically during QM/MM calculations.
 
   * `validate_at26_cap_patches.py`: Validate required AT26 cap-storage growth
     and writer guards, exact GNU/Intel relevant-file patch application and
