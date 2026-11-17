@@ -104,6 +104,22 @@ After the patches apply cleanly, continue with the normal AmberTools build
 procedure for your platform. Before running patched `sander`, make sure QMHub is
 installed and the `qmhub` command is available on `PATH`.
 
+### Required AT26 link-charge storage
+
+The shared AT26 SQM patch grows `qm_resp_charges` whenever `nquant+nlink`
+exceeds its current capacity. Growth preserves existing charge entries and
+initializes added entries to zero; no QM-region size or link count is fixed.
+This is required because Sander identifies links after its first allocation.
+Both GNU and Intel QMHub patches check association and capacity before writing
+MM-link charges, with separate checks that do not assume Fortran short-circuit
+logic. The checks apply to serial and MPI source variants.
+
+These changes repair invalid memory access without changing the intended charge,
+energy, force, unit, or index conventions. Results from earlier out-of-bounds
+access remain uncertified. Validate varied QM/link sizes, repeat allocation and
+charge preservation, plus linked and link-free calculations for each compiler
+and serial/MPI build before production use. AT23 patches are unchanged.
+
 ### Optional AT26 memory/link patch
 
 `qmmm_internal_link_scratch_at26.patch` is optional and pending validation
@@ -125,9 +141,9 @@ patch -p1 < /path/to/qmhub/patches/at26_intel/qmmm_internal_link_scratch_at26.pa
 
 The added bounds check assumes `link_pairs(2,i)` is a QM-local index within
 `1:nquant`; whether AmberTools26 uses local or global atom indices here remains
-unverified. When growing `qm_resp_charges`, the patch preserves existing entries
-and initializes new slots to zero. It may change results in runs that previously
-accessed invalid or uninitialized memory, and its checks may stop previously
+unverified. Required charge-storage growth and association/capacity checks are
+already supplied by the default AT26 patches. This optional patch may change
+results in runs that previously accessed invalid or uninitialized memory, and its checks may stop previously
 accepted inputs.
 
 Before production use, manually validate each compiler's serial and MPI builds:
@@ -162,17 +178,16 @@ from QM atoms, extend the legal `qmmm_int` range from `0..5` to `0..7`, reduce
 QM-MM electrostatic damping for `qmmm_int=6` and `qmmm_int=7`, include
 `qmmm_int=7` in AM1/PM3/PM6 core-core correction paths, increase
 external-charge input capacity, and report MM electrostatic potential/field
-output when QMMM verbosity is high enough. They allocate `qm_resp_charges` with
-link-atom slots so link-pair charges can be retained alongside QM atom charges.
+output when QMMM verbosity is high enough. The AT26 SQM patch also grows
+`qm_resp_charges` when links are discovered after the first allocation, retaining
+existing values and zeroing new slots. AT23 allocation behavior is unchanged.
 The reported `mm_esp` rows are indexed by SQM external-charge/QM-MM pair-list
 entry, not guaranteed original Amber atom IDs.
 
 The optional `qmmm_internal_link_scratch_at26.patch` addresses AmberTools26
 internal semiempirical QM/MM memory handling after the QMHub and SQM patches are
-applied. It extends `qm_resp_charges` when link atoms are discovered after the
-first QMMM structure allocation, adds explicit bounds checks around MM-link
-charge storage, guards and nullifies QM/MM pointer deallocations in the QMHub
-update path, and increases
+applied. It adds optional QM-side link-index checks, guards and nullifies
+QM/MM pointer deallocations in the QMHub update path, and increases
 `qm_real_scratch` allocations from `3*natom` to `4*natom` for the patched
 electrostatic field/force scratch layout.
 

@@ -524,16 +524,34 @@ index baf4839..1ba893f 100644
       ! Total number of atoms
       integer :: natom
       
-@@ -282,7 +285,7 @@ contains
+@@ -267 +270,2 @@
+-    integer :: natom, nquant, nlink, npairmax, ier
++    integer :: natom, nquant, nlink, npairmax, ier, old_resp_size
++    _REAL_, pointer :: new_resp_charges(:)
+@@ -282,8 +286,21 @@ contains
      nlink  = self%nlink
  
      if ( .not. associated ( self%qm_resp_charges ) ) then
 -       allocate ( self%qm_resp_charges(nquant), stat=ier )
 +       allocate ( self%qm_resp_charges(nquant+nlink), stat=ier )
         REQUIRE(ier == 0)
++       self%qm_resp_charges(:) = 0.0d0
++    else if (size(self%qm_resp_charges) < nquant+nlink) then
++       ! Link atoms are identified after the initial nquant-only allocation.
++       ! Preserve existing RESP charges and initialize the added entries.
++       old_resp_size = size(self%qm_resp_charges)
++       allocate ( new_resp_charges(nquant+nlink), stat=ier )
++       REQUIRE(ier == 0)
++       new_resp_charges(:) = 0.0d0
++       new_resp_charges(1:old_resp_size) = self%qm_resp_charges(:)
++       deallocate ( self%qm_resp_charges, stat=ier )
++       REQUIRE(ier == 0)
++       self%qm_resp_charges => new_resp_charges
++       nullify(new_resp_charges)
      end if
  
-@@ -336,6 +339,14 @@ contains
+     if ( .not. associated ( self%iqmatoms ) ) then
+@@ -336,6 +353,14 @@ contains
         end if
      end if
  
@@ -548,7 +566,7 @@ index baf4839..1ba893f 100644
      if (qmmm_switch) then
         ! In case of link atoms needs to be re-allocated since link atoms
         ! are not known when this routine is first called
-@@ -443,6 +454,13 @@ contains
+@@ -443,6 +468,13 @@ contains
         end if
      end if
  

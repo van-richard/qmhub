@@ -970,26 +970,46 @@
 +   qmmm_nml%qmhub_extern = qmmm_nml%qmtheory%EXTERN .and. qmhub_extern
 --- a/AmberTools/src/sqm/qm_zero_charges.F90
 +++ b/AmberTools/src/sqm/qm_zero_charges.F90
-@@ -91,0 +92,2 @@
+@@ -71,0 +72 @@
++  integer :: resp_size
+@@ -87,0 +89,17 @@
++  ! Link slots must exist before storing MM-link RESP charges.  Keep these
++  ! checks separate: Fortran does not require short-circuit evaluation.
++  if ( .not. associated(qmmm_struct%qm_resp_charges) ) then
++     call sander_bomb('qm_zero_mm_link_pair_main_chg', &
++          'qmmm_struct%qm_resp_charges is not allocated', &
++          'Cannot store MM-link RESP charges.')
++  end if
++
++  resp_size = size(qmmm_struct%qm_resp_charges)
++  if ( resp_size < qmmm_struct%nquant + nlink ) then
++     write(6,'(a,3i10)') 'QMMM: qm_resp_charges size, nquant, nlink = ', &
++          resp_size, qmmm_struct%nquant, nlink
++     call sander_bomb('qm_zero_mm_link_pair_main_chg', &
++          'qmmm_struct%qm_resp_charges is too small for link atoms', &
++          'Expected at least nquant+nlink entries.')
++  end if
++
+@@ -91,0 +110,2 @@
 +      ! Put MM-Link charges to Link atoms
 +      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
-@@ -97,0 +100,2 @@
+@@ -97,0 +118,2 @@
 +      ! Put MM-Link charges to Link atoms
 +      qmmm_struct%qm_resp_charges(qmmm_struct%nquant+i) = charges(y)
-@@ -137 +141 @@
+@@ -137 +159 @@
 -   _REAL_ :: q_correction_sum, q_correction, correction, final_q_sum
 +   _REAL_ :: q_correction_sum, q_correction, correction, correction_qm, final_q_sum
-@@ -168,0 +173 @@
+@@ -168,0 +191 @@
 +    correction_qm = -q_correction / dble(nquant_nlink)
-@@ -193,0 +199,5 @@
+@@ -193,0 +217,5 @@
 +    do i = 1, natom
 +      if (atom_mask(i) .or. mm_link_mask(i)) then
 +        charge(i) = charge(i) + correction_qm
 +      end if
 +    end do
-@@ -221,0 +232,2 @@
+@@ -221,0 +250,2 @@
 +    correction_qm = -q_correction / dble(nquant_nlink)
 +
-@@ -228,0 +241,2 @@
+@@ -228,0 +259,2 @@
 +      else
 +        charge(i) = charge(i) + correction_qm

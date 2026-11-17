@@ -37,6 +37,13 @@ This directory contains OS agnostic helper scripts which don't fall in any of th
     and CUDA calculations without external QM jobs. QMHub Git identity is
     verified separately against its build manifest.
 
+  * `validate_at26_cap_patches.py`: Validate required AT26 cap-storage growth
+    and writer guards, exact GNU/Intel relevant-file patch application and
+    optional-patch compatibility using external Amber source fixtures. It runs
+    no compiler or scientific executable. Parser tests are in
+    `tests/test_at26_cap_patches.py`; runtime allocation tests require a separate
+    bounds-enabled Fortran build.
+
 * `modulefiles/lynnx`: Lua templates selecting the baseline `qmhub2` and
   `qmhub2-mlpui` executables through Lmod, with reversible Python search settings.
 
