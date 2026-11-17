@@ -1,18 +1,19 @@
 name: CI
 
 on:
-  # GitHub has started calling new repo's first branch "main" https://github.com/github/renaming
-  # The cookiecutter uses the "--initial-branch" flag when it runs git-init
+  # Test the repository's maintained branches and pull requests targeting them.
   push:
     branches:
-      - "main"
+      - "master"
+      - "vibing"
+      - "vibe-pui"
   pull_request:
     branches:
-      - "main"
+      - "master"
+      - "vibing"
+      - "vibe-pui"
   schedule:
-    # Weekly tests run on main by default:
-    #   Scheduled workflows run on the latest commit on the default or base branch.
-    #   (from https://help.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events-schedule)
+    # Weekly tests use the latest workflow on the repository's default branch.
     - cron: "0 0 * * 0"
 
 jobs:
@@ -20,8 +21,11 @@ jobs:
     name: Test on ${{ matrix.os }}, Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # Collect all platform results when one compatibility check fails.
+      fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest, windows-latest]
+        # Pin the macOS image and architecture for reproducible compatibility checks.
+        os: [macos-15-intel, ubuntu-latest, windows-latest]
         python-version: ["3.10.15", "3.12.13"]
 
     steps:
@@ -34,25 +38,30 @@ jobs:
           df -h
           ulimit -a
 
-      # More info on options: https://github.com/marketplace/actions/provision-with-micromamba
-      - uses: mamba-org/provision-with-micromamba@main
+      # The maintained action supports current micromamba shell initialization.
+      # https://github.com/mamba-org/setup-micromamba#usage
+      - uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: devtools/conda-envs/test_env.yaml
           environment-name: test
-          channels: conda-forge,defaults
-          extra-specs: |
+          init-shell: bash
+          condarc: |
+            channels:
+              - conda-forge
+              - defaults
+          create-args: >-
             python=${{ matrix.python-version }}
 
       - name: Install package
-        # conda setup requires this special shell
-        shell: bash -l {0}
+        # Login shells activate the environment initialized by setup-micromamba.
+        shell: bash -el {0}
         run: |
           python -m pip install .
           micromamba list
 
       - name: Run tests
-        # conda setup requires this special shell
-        shell: bash -l {0}
+        # Login shells activate the environment initialized by setup-micromamba.
+        shell: bash -el {0}
         run: |
           pytest -v --cov=qmhub --cov-report=xml --color=yes qmhub/tests/
 

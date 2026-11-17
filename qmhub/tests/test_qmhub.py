@@ -446,6 +446,10 @@ def test_text_and_binary_outputs_match_upstream_layout(tmp_path):
     assert np.allclose(bin_output[1:].reshape(4, 3).T, forces)
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo"),
+    reason="Named FIFO round trips require POSIX os.mkfifo.",
+)
 def test_fifo_round_trip_writes_energy_and_forces(tmp_path):
     input_fifo = tmp_path.joinpath("exchange.fifo")
     output_fifo = input_fifo.with_suffix(".out")
@@ -724,7 +728,8 @@ def test_qchem_energy_reports_missing_binary(tmp_path):
 
     message = str(error.value)
     assert "Q-Chem energy binary output was not produced" in message
-    assert "save/99.0" in message
+    # Diagnostics format paths with the platform's native separators.
+    assert str(tmp_path.joinpath("save", "99.0")) in message
 
 
 def test_qchem_energy_reports_incomplete_binary_without_removing(tmp_path):
@@ -856,6 +861,6 @@ def test_qchem_mm_esp_reports_missing_sources(tmp_path):
 
     message = str(error.value)
     assert "Could not find valid Q-Chem MM ESP output." in message
-    assert "save/1521.0" in message
-    assert "save/5001.0" in message
+    assert str(save_path.joinpath("1521.0")) in message
+    assert str(save_path.joinpath("5001.0")) in message
     assert "123.0" in message
