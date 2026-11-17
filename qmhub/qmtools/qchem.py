@@ -1,3 +1,4 @@
+import errno
 import os
 from pathlib import Path
 
@@ -137,12 +138,8 @@ class QChem(QMBase):
             qm_cache.update_cache()
 
         n_mm = len(self.mm_charges)
-        mm_esp = np.zeros((4, n_mm))
-
         if n_mm == 0:
-            return mm_esp
-
-        tried = []
+            return np.zeros((4, 0))
 
         if output is not None:
             # Explicit output is an internal/direct parser hook; normal runs
@@ -158,28 +155,26 @@ class QChem(QMBase):
             potential_path = Path(self.cwd).joinpath(potential)
             field_path = Path(self.cwd).joinpath(field)
             allow_trailing = (potential, field) in self._MM_ESP_TRAILING_MM_OUTPUTS
-            tried.append(
-                self._describe_binary_mm_esp_pair(
+            row_count = self._binary_mm_esp_row_count(potential_path, field_path)
+            if self._valid_mm_esp_row_count(row_count, n_mm, allow_trailing):
+                # Reuse this step's validation; the reader needs no more stats.
+                return self._read_validated_binary_mm_esp(
                     potential_path,
                     field_path,
                     n_mm,
-                    allow_trailing,
+                    row_count,
                 )
-            )
 
-            if self._valid_binary_mm_esp_pair(
-                potential_path,
-                field_path,
+        # File descriptions and directory listings are useful only on failure.
+        tried = [
+            self._describe_binary_mm_esp_pair(
+                Path(self.cwd).joinpath(potential),
+                Path(self.cwd).joinpath(field),
                 n_mm,
-                allow_trailing,
-            ):
-                return self._read_binary_mm_esp(
-                    potential_path,
-                    field_path,
-                    n_mm,
-                    allow_trailing,
-                )
-
+                (potential, field) in self._MM_ESP_TRAILING_MM_OUTPUTS,
+            )
+            for potential, field in self._MM_ESP_BINARY_OUTPUTS
+        ]
         raise FileNotFoundError(self._format_mm_esp_error(tried, n_mm))
 
     @staticmethod
@@ -197,7 +192,10 @@ class QChem(QMBase):
         allow_trailing=False,
     ):
         row_count = QChem._binary_mm_esp_row_count(potential_path, field_path)
+        return QChem._valid_mm_esp_row_count(row_count, n_mm, allow_trailing)
 
+    @staticmethod
+    def _valid_mm_esp_row_count(row_count, n_mm, allow_trailing=False):
         if row_count is None:
             return False
         if row_count == n_mm:
@@ -213,11 +211,18 @@ class QChem(QMBase):
         potential_path = Path(potential_path)
         field_path = Path(field_path)
 
-        if not potential_path.exists() or not field_path.exists():
+        try:
+            potential_size = potential_path.stat().st_size
+            field_size = field_path.stat().st_size
+        except OSError as error:
+            # Preserve Path.exists()'s unavailable-path behavior while using
+            # one stat per file; permission and other I/O errors still surface.
+            if error.errno not in (errno.ENOENT, errno.ENOTDIR, errno.EBADF, errno.ELOOP):
+                raise
             return None
-
-        potential_size = potential_path.stat().st_size
-        field_size = field_path.stat().st_size
+        except ValueError:
+            # Path.exists() also rejects paths that cannot be encoded.
+            return None
 
         if potential_size % 8 or field_size % 8:
             return None
@@ -260,14 +265,8 @@ class QChem(QMBase):
     ):
         potential_path = Path(potential_path)
         field_path = Path(field_path)
-        mm_esp = np.zeros((4, n_mm))
-
-        if not QChem._valid_binary_mm_esp_pair(
-            potential_path,
-            field_path,
-            n_mm,
-            allow_trailing,
-        ):
+        row_count = QChem._binary_mm_esp_row_count(potential_path, field_path)
+        if not QChem._valid_mm_esp_row_count(row_count, n_mm, allow_trailing):
             raise ValueError(
                 "Invalid Q-Chem binary MM ESP files: "
                 + QChem._describe_binary_mm_esp_pair(
@@ -278,21 +277,40 @@ class QChem(QMBase):
                 )
             )
 
-        row_count = QChem._binary_mm_esp_row_count(potential_path, field_path)
+        # Keep direct parser calls validated without repeating discovery's I/O.
+        return QChem._read_validated_binary_mm_esp(
+            potential_path, field_path, n_mm, row_count
+        )
+
+    @staticmethod
+    def _read_validated_binary_mm_esp(potential_path, field_path, n_mm, row_count):
         skip_rows = row_count - n_mm
 
-        mm_esp[0] = np.fromfile(
+        potential = np.fromfile(
             potential_path,
             dtype="f8",
             count=n_mm,
             offset=skip_rows * 8,
         )
-        mm_esp[1:] = -np.fromfile(
+        field = np.fromfile(
             field_path,
             dtype="f8",
             count=(n_mm * 3),
             offset=skip_rows * 3 * 8,
-        ).reshape(-1, 3).T
+        )
+
+        # Files can change after stat. Reject short reads before assignment can
+        # broadcast a single row, and retain both files for failure diagnostics.
+        if potential.size != n_mm or field.size != n_mm * 3:
+            raise ValueError(
+                "Incomplete Q-Chem binary MM ESP read: "
+                f"{potential_path} yielded {potential.size} values, expected {n_mm}; "
+                f"{field_path} yielded {field.size} values, expected {n_mm * 3}."
+            )
+
+        mm_esp = np.zeros((4, n_mm))
+        mm_esp[0] = potential
+        mm_esp[1:] = -field.reshape(-1, 3).T
 
         # Match the previous lifecycle for Q-Chem binary scratch outputs.
         os.remove(potential_path)
