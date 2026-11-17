@@ -23,6 +23,26 @@ This directory contains the files to setup the Conda environment for testing pur
 This directory contains OS agnostic helper scripts which don't fall in any of the previous categories
 * `scripts`
   * `create_conda_env.py`: Helper program for spinning up new conda environments based on a starter file with Python Version and Env. Name command-line options
+  * `check_qmmm_stack.py`: Inspect the selected Python/QMHub, Sander, and
+    Q-Chem installation without starting a licensed calculation. Run it after
+    loading the intended modules, using the environment's Python:
+
+    ```bash
+    python -I devtools/scripts/check_qmmm_stack.py
+    python -I devtools/scripts/check_qmmm_stack.py --json
+    ```
+
+    The checker reports interpreter/package/launcher locations, Amber and
+    Q-Chem settings, thread controls, and Linux native linkage. It flags mixed
+    installations and missing runtime libraries; missing optional `sander.MPI`
+    is a warning. `--amber-home PREFIX` selects the intended Sander installation
+    for comparison, while stale shell `AMBERHOME` settings still fail. Linux
+    linkage inspection uses `ldd` only on the selected installation's resolved
+    ELF executables; other platforms skip this check. The tool does not import
+    QMHub, modify environment settings, load modules, or launch Amber/Q-Chem.
+    It exits with status 0 when required checks pass and 1 when they fail.
+    It is never called automatically during QM/MM calculations.
+
 
 ### External Amber/QMHub smoke tests:
 
