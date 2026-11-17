@@ -17,12 +17,28 @@ This directory contains the files to setup the Conda environment for testing pur
 
 * `conda-envs`: directory containing the YAML file(s) which fully describe Conda Environments, their dependencies, and those dependency provenance's
   * `test_env.yaml`: Simple test environment file with base dependencies. It declares the `conda-forge` and `defaults` channels used by CI.
+  * `qmhub2-mlpui.yaml`: Python 3.12.13 numerical base for the local MLPUI stack;
+    accompanying constraints and Linux explicit conda list preserve the numerical
+    base. The pip lock contains only its tested pip overlay, including the
+    setuptools replacement. Follow [local setup notes](../docs/local_environment_setup.rst)
+    for branch-specific source wheels, deployment manifests, and the separate
+    helPME binary copy.
   
 ### Additional Scripts:
 
 This directory contains OS agnostic helper scripts which don't fall in any of the previous categories
 * `scripts`
   * `create_conda_env.py`: Helper program for spinning up new conda environments based on a starter file with Python Version and Env. Name command-line options
+  * `build_pinned_qmhub_wheel.py`: Build and verify an existing immutable Git
+    commit without switching branches or including native binaries. Commit source
+    changes before building; retain the manifest for installed-source verification.
+  * `validate_mlpui_environment.py`: Check installed MLPUI source identity,
+    NumPy/Torch interoperability, native PME, the real analytic MLPUI adapter,
+    and CUDA calculations without external QM jobs. QMHub Git identity is
+    verified separately against its build manifest.
+
+* `modulefiles/lynnx`: Lua templates selecting the baseline `qmhub2` and
+  `qmhub2-mlpui` executables through Lmod, with reversible Python search settings.
 
 ### External Amber/QMHub smoke tests:
 

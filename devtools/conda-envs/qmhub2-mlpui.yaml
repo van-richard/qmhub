@@ -1,0 +1,14 @@
+# Base environment. Follow docs/local_environment_setup.rst for the pinned
+# CUDA/MLPUI wheels, QMHub snapshot, and ABI-matched helPME binary.
+name: qmhub2-mlpui
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.13
+  - numpy=2.4.6
+  - scipy=1.17.1
+  - pip=26.2.2
+  - setuptools=84.2.1
+  - wheel=0.48.0
+  - versioningit=2.3.0
+  - pytest=9.2.0

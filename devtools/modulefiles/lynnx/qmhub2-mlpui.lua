@@ -1,0 +1,35 @@
+help([[
+QMHub vibe-pui with the optional MLPUI stack in the lynnx qmhub2-mlpui environment.
+
+Initialize Lmod in Bash before using this Lua module:
+    source /opt/apps/lmod/lmod/8.7.34/init/bash
+    module load qmhub2-mlpui
+
+Deactivate any Conda environment and unload other environment modules first.
+This module selects executables through PATH; it does not activate Conda or
+change backend modules, library search paths, or thread settings. Sander and
+Q-Chem remain separate selections. MLPUI uses its Python neighbor implementation.
+Unloading restores Python search settings and the previous neighbor selection.
+]])
+
+whatis("QMHub vibe-pui with MLPUI: lynnx qmhub2-mlpui executable selector")
+
+-- Explicit conflicts fail instead of silently swapping environment families.
+conflict("qmhub2", "qmhub", "base", "ambertools23", "mbar", "webdev", "conda")
+
+local prefix = "/home/van/Programs/miniforge3/envs/qmhub2-mlpui"
+if mode() == "load" then
+    if (os.getenv("CONDA_PREFIX") or "") ~= "" then
+        LmodError("Deactivate the active Conda environment before loading qmhub2-mlpui.")
+    end
+    if not isFile(pathJoin(prefix, "bin", "python")) then
+        LmodError("The qmhub2-mlpui Python environment is missing: " .. prefix)
+    end
+end
+
+-- Avoid Conda activation hooks and global library overrides that can affect Amber.
+prepend_path("PATH", pathJoin(prefix, "bin"))
+pushenv("PYTHONNOUSERSITE", "1")
+-- false unsets PYTHONPATH while retaining its previous value for module unload.
+pushenv("PYTHONPATH", false)
+pushenv("MLPUI_NEIGHBORS", "python")

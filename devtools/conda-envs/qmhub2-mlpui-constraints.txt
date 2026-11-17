@@ -1,0 +1,9 @@
+# Keep QMHub's numerical ABI stable while resolving MLPUI's full dependencies.
+numpy==2.4.6
+scipy==1.17.1
+torch==2.11.0+cu128
+torch-geometric==2.8.1
+e3nn==0.4.4
+opt-einsum-fx==0.1.4
+# PyTorch 2.11 requires setuptools<82; keep the version selected by its wheel index.
+setuptools==78.1.0
