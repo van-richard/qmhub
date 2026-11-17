@@ -10,6 +10,22 @@ run them from an installed `site-packages/qmhub` directory. Keep or clone a
 QMHub checkout, activate the environment where QMHub is installed, then run the
 tests from this directory.
 
+By default, the harness tests source from that checkout. To validate an installed
+wheel instead, invoke the harness with the Python interpreter from the target
+environment and select `--qmhub-source installed`:
+
+```bash
+/path/to/environment/bin/python run_amber_qmhub_tests.py \
+  --mode serial --qmhub-source installed --amber-home /path/to/patched/ambertools
+```
+
+Installed mode removes inherited `PYTHONPATH` from child jobs and launches QMHub
+with Python's `-I` isolation flag. Before starting Amber or Q-Chem, it imports
+QMHub in that interpreter and rejects a resolved package path outside its
+installation prefix or inside this checkout, including editable installations.
+The detected package path is printed for the validation record. The default
+`--qmhub-source checkout` preserves the existing checkout-based behavior.
+
 ## Recommended workflow
 
 ```bash
@@ -106,7 +122,11 @@ launcher command.
 ## Useful variables
 
 - `AMBERHOME`: AmberTools installation prefix; the harness searches
-  `$AMBERHOME/bin` for Amber executables.
+  `$AMBERHOME/bin` for Amber executables. `--amber-home` overrides this value.
+  The selected prefix is expanded to an absolute path and exported to child
+  jobs, keeping executable discovery and Amber data-file lookup consistent.
+  Explicit `--sander` and `--sander-mpi` commands retain precedence over prefix
+  lookup. Without either prefix setting, executable lookup still uses `PATH`.
 - `QMHUB_AMBER_PRMTOP`: Amber topology file.
 - `QMHUB_AMBER_RST7`: Amber restart file.
 - `QMHUB_AMBER_QMMASK`: Amber QM mask.

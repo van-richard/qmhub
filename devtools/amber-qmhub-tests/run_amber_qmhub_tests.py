@@ -9,6 +9,7 @@ patched executables through the public command-line interface.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import re
@@ -224,14 +225,29 @@ if __name__ == "__main__":
 def prepare_environment(args: argparse.Namespace, work_root: Path) -> tuple[dict[str, str], Path | None]:
     env = os.environ.copy()
     amber_home = args.amber_home or env.get("AMBERHOME")
-    amber_bin = Path(amber_home).expanduser() / "bin" if amber_home else None
+    amber_bin = None
+    if amber_home:
+        # Child jobs change directory, so PATH lookup and Amber's own data-file
+        # lookup must use the same absolute prefix, including explicit overrides.
+        amber_prefix = Path(amber_home).expanduser().resolve()
+        env["AMBERHOME"] = str(amber_prefix)
+        amber_bin = amber_prefix / "bin"
+
+    installed = args.qmhub_source == "installed"
+    if installed:
+        # Installation tests must not accidentally validate this checkout through
+        # an inherited PYTHONPATH. Isolated Python also excludes the current cwd.
+        env.pop("PYTHONPATH", None)
+        module_path = validate_installed_qmhub(env, work_root)
+        print(f"Installed QMHub module: {module_path}")
 
     shim_dir = work_root / "bin"
     shim_dir.mkdir(parents=True, exist_ok=True)
     qmhub_shim = shim_dir / "qmhub"
     qmhub_shim.write_text(
         "#!/bin/sh\n"
-        f"exec {shlex.quote(sys.executable)} -m qmhub \"$@\"\n",
+        f"exec {shlex.quote(str(Path(sys.executable).absolute()))}"
+        f"{' -I' if installed else ''} -m qmhub \"$@\"\n",
         encoding="utf-8",
     )
     qmhub_shim.chmod(qmhub_shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -252,12 +268,51 @@ def prepare_environment(args: argparse.Namespace, work_root: Path) -> tuple[dict
     path_entries.append(env.get("PATH", ""))
     env["PATH"] = os.pathsep.join(path_entries)
 
-    pythonpath_entries = [str(REPO_ROOT)]
-    if env.get("PYTHONPATH"):
-        pythonpath_entries.append(env["PYTHONPATH"])
-    env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    if not installed:
+        pythonpath_entries = [str(REPO_ROOT)]
+        if env.get("PYTHONPATH"):
+            pythonpath_entries.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
 
     return env, amber_bin
+
+
+def validate_installed_qmhub(env: dict[str, str], work_root: Path) -> Path:
+    """Reject editable or misplaced imports before any licensed job starts."""
+    command = [
+        str(Path(sys.executable).absolute()),
+        "-I",
+        "-c",
+        "import json, sys, qmhub; "
+        "print(json.dumps({'module': qmhub.__file__, 'prefix': sys.prefix}))",
+    ]
+    try:
+        result = run_command(command, work_root, env, timeout=30)
+    except (OSError, subprocess.TimeoutExpired, TestFailure) as exc:
+        raise TestFailure(
+            "installed QMHub import check failed; run the harness with the "
+            "Python interpreter from the environment to be tested\n"
+            f"{exc}"
+        ) from exc
+
+    try:
+        identity = json.loads(result.stdout)
+        module_path = Path(identity["module"]).resolve()
+        prefix = Path(identity["prefix"]).resolve()
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TestFailure(
+            f"invalid installed QMHub import identity: {result.stdout!r}"
+        ) from exc
+
+    # -I still permits editable-install hooks in site-packages. Check the resolved
+    # origin as well, so a successful import really belongs to this interpreter.
+    if module_path.is_relative_to(REPO_ROOT.resolve()) or not module_path.is_relative_to(prefix):
+        raise TestFailure(
+            "--qmhub-source installed requires a non-editable installation "
+            "inside the selected Python prefix\n"
+            f"module: {module_path}\nprefix: {prefix}\ncheckout: {REPO_ROOT}"
+        )
+    return module_path
 
 
 def write_text(path: Path, text: str) -> None:
@@ -615,6 +670,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["serial", "parallel"], required=True)
     parser.add_argument("--amber-home", help="AmberTools installation prefix")
+    parser.add_argument(
+        "--qmhub-source",
+        choices=["checkout", "installed"],
+        default="checkout",
+        help="Test this checkout (default) or the selected interpreter's installed package",
+    )
     parser.add_argument("--work-dir", help="Working directory for generated test files")
     parser.add_argument("--keep-work", action="store_true", default=os.environ.get("QMHUB_KEEP_WORK") == "1")
     parser.add_argument("--prmtop", help="Existing Amber topology for sander/sander.MPI tests")
