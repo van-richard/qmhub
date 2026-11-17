@@ -1,5 +1,5 @@
 help([[
-QMHub vibe-pui with the optional MLPUI stack in the lynnx qmhub2-mlpui environment.
+QMHub vibing-mlpui with the optional MLPUI stack in the lynnx qmhub2-mlpui environment.
 
 Initialize Lmod in Bash before using this Lua module:
     source /opt/apps/lmod/lmod/8.7.34/init/bash
@@ -12,7 +12,7 @@ Q-Chem remain separate selections. MLPUI uses its Python neighbor implementation
 Unloading restores Python search settings and the previous neighbor selection.
 ]])
 
-whatis("QMHub vibe-pui with MLPUI: lynnx qmhub2-mlpui executable selector")
+whatis("QMHub vibing-mlpui with MLPUI: lynnx qmhub2-mlpui executable selector")
 
 -- Explicit conflicts fail instead of silently swapping environment families.
 conflict("qmhub2", "qmhub", "base", "ambertools23", "mbar", "webdev", "conda")

@@ -1,6 +1,13 @@
 Local QMHub environments on lynnx
 =================================
 
+.. note::
+
+   On 17 November 2026, the combined development branch was renamed from
+   ``vibe-pui`` to ``vibing-mlpui`` with its history preserved. Commands below
+   use the current name. Earlier wheel manifests and test records retain their
+   original branch labels and immutable commit identities.
+
 This setup record was prepared on 2026-11-16. Both environments use Python
 3.12.13, NumPy 2.4.6, and SciPy 1.17.1. Environment names do not rename the
 Python package or command: both remain ``qmhub``.
@@ -17,7 +24,7 @@ The branch selection for local reinstalls is:
      - ``vibing``
      - Baseline QMHub with the recentering-gradient correction.
    * - ``qmhub2-mlpui``
-     - ``vibe-pui``
+     - ``vibing-mlpui``
      - The same correction plus the optional MLPUI adapter.
 
 Resolve each branch to an immutable commit after committing its changes, then
@@ -38,7 +45,7 @@ recentering-gradient correction**, rather than the targets for later reinstalls:
      - ``82c6d46a8aa9b1819a2845eaca638aebb4f409c5`` (tested ``vibing``)
      - ``1.0.0+217.g82c6d46``
    * - ``qmhub2-mlpui``
-     - ``df11ca252ef0b47655a15bfcfbaa7d6de8a34bcd`` (``vibe-pui``)
+     - ``df11ca252ef0b47655a15bfcfbaa7d6de8a34bcd`` (``vibing-mlpui``)
      - ``1.0.0+227.gdf11ca2``
 
 The existing ``qmhub`` environment was retained. Its older installed source
@@ -136,9 +143,9 @@ the selected commit and excludes uncommitted changes. For a fresh deployment
 directory, resolve both branches and build their separate wheels::
 
    vibing_commit=$(git rev-parse --verify 'vibing^{commit}')
-   vibe_pui_commit=$(git rev-parse --verify 'vibe-pui^{commit}')
+   vibing_mlpui_commit=$(git rev-parse --verify 'vibing-mlpui^{commit}')
    /home/van/Programs/miniforge3/envs/qmhub2/bin/python -I -B devtools/scripts/build_pinned_qmhub_wheel.py --commit "$vibing_commit" --output-dir build/publish-reinstall-20261116/qmhub2
-   /home/van/Programs/miniforge3/envs/qmhub2/bin/python -I -B devtools/scripts/build_pinned_qmhub_wheel.py --commit "$vibe_pui_commit" --output-dir build/publish-reinstall-20261116/qmhub2-mlpui
+   /home/van/Programs/miniforge3/envs/qmhub2/bin/python -I -B devtools/scripts/build_pinned_qmhub_wheel.py --commit "$vibing_mlpui_commit" --output-dir build/publish-reinstall-20261116/qmhub2-mlpui
 
 The builder requires a new output directory. It archives only the selected
 commit, embeds its version independently of the working tree, and verifies
@@ -214,7 +221,7 @@ Record these results for each final wheel under the reinstall artifact root:
   including metadata and generated version, all runtime files, and the unchanged
   native binary hash. Run ``pip check`` without changing dependencies.
 * Run the matching archived QMHub tests against the installed package with
-  native helPME required: 63 tests for ``vibing`` and 66 for ``vibe-pui`` on
+  native helPME required: 63 tests for ``vibing`` and 66 for ``vibing-mlpui`` on
   Linux, including all 15 recentering regressions. Guard imports in subprocesses
   as well as the main test process; retained archive files provide test fixtures,
   not the runtime source under test.

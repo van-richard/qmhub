@@ -29,13 +29,13 @@ conda create --prefix ~/envs/qmhub-py310 python=3.10.15 numpy=2.2.6 scipy=1.15.3
 conda activate ~/envs/qmhub-py310
 ```
 
-Clone the combined `vibe-pui` development branch under `~/github` and install
+Clone the combined `vibing-mlpui` development branch under `~/github` and install
 from the source checkout:
 
 ```bash
 mkdir -p ~/github
 cd ~/github
-git clone --branch vibe-pui https://github.com/van-richard/qmhub.git
+git clone --branch vibing-mlpui https://github.com/van-richard/qmhub.git
 cd ~/github/qmhub
 python -m pip install .
 ```

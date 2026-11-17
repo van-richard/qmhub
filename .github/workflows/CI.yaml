@@ -6,12 +6,12 @@ on:
     branches:
       - "master"
       - "vibing"
-      - "vibe-pui"
+      - "vibing-mlpui"
   pull_request:
     branches:
       - "master"
       - "vibing"
-      - "vibe-pui"
+      - "vibing-mlpui"
   schedule:
     # Weekly tests use the latest workflow on the repository's default branch.
     - cron: "0 0 * * 0"

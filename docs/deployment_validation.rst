@@ -14,6 +14,24 @@ HPCC. A local conda prefix had already been created with Python 3.12.13,
 NumPy 2.4.6 and SciPy 1.17.1; QMHub and helPME were not installed into that new
 prefix, and it is not a validated QMHub installation.
 
+Branch rename and AT26 charge-storage repair: 17 November 2026
+-------------------------------------------------------------
+
+The combined development branch is now named ``vibing-mlpui``; its earlier
+``vibe-pui`` history is preserved. Use ``vibing`` for the baseline stack and
+``vibing-mlpui`` for the optional MLPUI stack. The dated audits below retain
+the branch names and deployment identities recorded at the time.
+
+The mandatory AT26 QMHub/SQM patches now grow charge storage dynamically to
+``nquant+nlink``, preserve existing entries, initialize new entries, and check
+capacity before cap-charge writes. This repairs a compiled Sander-side memory
+error; it does not impose a fixed QM-region size or change Python parsing.
+Local serial/MPI constructor and writer checks cover varied QM/link counts.
+The broader optional scratch-memory patch remains separate and unvalidated;
+see ``patches/README.md`` for the exact patch scope and validation requirements.
+Installed builds and scientific finite-difference results have their own
+campaign records and are not certified by these source-level notes.
+
 Branch consolidation audit: 16 November 2026
 --------------------------------------------
 
